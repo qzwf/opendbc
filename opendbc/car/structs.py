@@ -1,6 +1,13 @@
+import os
+import capnp
 from dataclasses import dataclass as _dataclass, field, is_dataclass
 from enum import Enum, StrEnum as _StrEnum, auto
 from typing import dataclass_transform, get_origin
+
+CEREAL_PATH = os.path.dirname(os.path.abspath(__file__))
+capnp.remove_import_hook()
+
+car = capnp.load(os.path.join(CEREAL_PATH, "car.capnp"))
 
 AUTO_OBJ = object()
 
