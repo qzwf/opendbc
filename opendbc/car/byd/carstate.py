@@ -322,7 +322,7 @@ class CarState(CarStateBase):
         messages = [
             ("ACC_HUD_ADAS", 50),
             ("ACC_CMD", 50),
-            ("ACC_MPC_STATE", 50),
+            # ("ACC_MPC_STATE", 50),
         ]
 
         return {Bus.cam: CANParser(DBC[CP.carFingerprint]["pt"], messages, 2)}
