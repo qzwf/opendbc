@@ -296,12 +296,12 @@ class CarState(CarStateBase):
     @staticmethod
     def get_can_parser(CP):
         messages = [
-            ("EPS", 100),
-            ("CARSPEED", 50),
-            ("PEDAL", 50),
-            ("ACC_EPS_STATE", 50),
+            # ("EPS", 100),
+            # ("CARSPEED", 50),
+            # ("PEDAL", 50),
+            # ("ACC_EPS_STATE", 50),
             ("STALKS", 1),
-            ("BCM", 1),
+            # ("BCM", 1),
             ("DRIVE_STATE", 10),
             ("ACC_HUD_ADAS", 1),
             ("WHEEL_SPEED", 80),
