@@ -19,7 +19,7 @@ def byd_checksum(byte_key, dat):
 
 def create_steering_control(packer, CP, cam_msg: dict, req_torque, req_prepare, active, Counter):
     values = {}
-    values = {s: cam_msg[s] for s in [
+    values = {s: cam_msg for s in [
         "AutoFullBeamState",
         "LeftLaneState",
         "LKAS_Config",
@@ -88,7 +88,7 @@ def acc_command(packer, CP, cam_msg: dict, speed, enabled):
 def create_fake_318(packer, CP, esc_msg: dict, faketorque, laks_reqprepare, laks_active, enabled, counter):
     values = {}
 
-    values = {s: esc_msg[s] for s in [
+    values = {s: esc_msg for s in [
         "LKAS_Prepared",
         "CruiseActivated",
         "TorqueFailed",
