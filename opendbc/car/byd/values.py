@@ -40,8 +40,9 @@ class BYDCarDocs(CarDocs):
 
 @ dataclass
 class BYDPlatformConfig(PlatformConfig):
-    dbc_dict: DbcDict = field(
-        default_factory=lambda: {Bus.pt: 'byd_general_pt'})
+    dbc_dict: DbcDict = field(default_factory=lambda: {
+        Bus.pt: 'byd_general_pt',
+        None:None})
 
 
 class CAR(Platforms):

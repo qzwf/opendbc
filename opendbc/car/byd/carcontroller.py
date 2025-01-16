@@ -47,7 +47,7 @@ class CarController(CarControllerBase):
             if self.first_start:
                 self.mpc_lkas_counter = CS.acc_mpc_state_counter
                 self.mpc_acc_counter = CS.acc_cmd_counter
-                self.eps_fake318_counter = CS.eps_state_counter
+                # self.eps_fake318_counter = CS.eps_state_counter
                 self.first_start = False
 
             apply_steer = 0
@@ -98,14 +98,14 @@ class CarController(CarControllerBase):
         # if self.frame < self.last_acc_frame:
         #  self.last_acc_frame = self.frame - 1
 
-        accel = 0
-        if (self.frame - self.last_acc_frame) >= ACC_STEP:
-            accel = clip(CC.actuators.accel, CarControllerParams.ACCEL_MIN,
-                         CarControllerParams.ACCEL_MAX)
+        # accel = 0
+        # if (self.frame - self.last_acc_frame) >= ACC_STEP:
+        #     accel = clip(CC.actuators.accel, CarControllerParams.ACCEL_MIN,
+        #                  CarControllerParams.ACCEL_MAX)
 
-            self.last_acc_frame = self.frame
-            can_sends.append(bydcan.acc_command(
-                self.packer, self.CP, CS.cam_acc, accel, CC.enabled))
+        #     self.last_acc_frame = self.frame
+        #     can_sends.append(bydcan.acc_command(
+        #         self.packer, self.CP, CS.cam_acc, accel, CC.enabled))
 
         new_actuators = CC.actuators.as_builder()
         new_actuators.steer = self.apply_steer_last / CarControllerParams.STEER_MAX
