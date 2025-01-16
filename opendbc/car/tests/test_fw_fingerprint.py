@@ -196,7 +196,7 @@ class TestFwFingerprint:
 
 class TestFwFingerprintTiming:
   N: int = 5
-  TOL: float = 0.2
+  TOL: float = 0.05
 
   # for patched functions
   current_obd_multiplexing: bool
@@ -270,7 +270,6 @@ class TestFwFingerprintTiming:
       1: {
         'gm': 1.0,
         'body': 0.1,
-        'byd': 0.1,
         'chrysler': 0.3,
         'ford': 1.5,
         'honda': 0.45,
