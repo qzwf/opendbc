@@ -337,4 +337,4 @@ class CarState(CarStateBase):
     #     ]
 
     #     return {Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.cam], messages, 2)}
->>>>>>> opendcb_repo_update
+
