@@ -1,5 +1,6 @@
 from typing import NamedTuple
 
+from opendbc.car.byd.values import CAR as BYD
 from opendbc.car.chrysler.values import CAR as CHRYSLER
 from opendbc.car.gm.values import CAR as GM
 from opendbc.car.ford.values import CAR as FORD
@@ -17,6 +18,7 @@ from opendbc.car.body.values import CAR as COMMA
 
 # FIXME: add routes for these cars
 non_tested_cars = [
+  BYD.BYD_ATTO3,
   MOCK.MOCK,
   FORD.FORD_F_150_MK14,
   GM.CADILLAC_ATS,
