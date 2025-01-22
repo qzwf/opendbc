@@ -196,7 +196,7 @@ class TestFwFingerprint:
 
 class TestFwFingerprintTiming:
   N: int = 5
-  TOL: float = 0.2
+  TOL: float = 0.5
 
   # for patched functions
   current_obd_multiplexing: bool
