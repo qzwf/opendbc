@@ -8,7 +8,7 @@ from opendbc.car.interfaces import CarControllerBase
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
 ButtonType = structs.CarState.ButtonEvent.Type
 
-STEER_STEP = 2  # 100/2=50hz
+STEER_STEP = 0  # 100/2=50hz
 ACC_STEP = 2  # 50hz
 
 # 20ms(50Hz) * 200 / 6 = 666ms. This means the clip ceiling will be increased to 200 in 666ms
