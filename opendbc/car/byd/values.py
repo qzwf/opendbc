@@ -25,7 +25,7 @@ class CarControllerParams:
     # So DriverTorque(max) = STEER_MAX / STEER_DRIVER_MULTIPLIER + STEER_DRIVER_ALLOWANCE = 300/3+68 = 168
     # i.e. when drivertorque > 168, new_steer will be cliped to 0
 
-    STEER_STEP = 0  # 2=50 Hz
+    STEER_STEP = 2  # 2=50 Hz
 
     def __init__(self, CP):
         pass
