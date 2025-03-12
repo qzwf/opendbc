@@ -57,6 +57,7 @@ pre-commit run --all-files       # run the linter
 * [`opendbc/dbc/`](opendbc/dbc/) is a repository of [DBC](https://en.wikipedia.org/wiki/CAN_bus#DBC) files
 * [`opendbc/can/`](opendbc/can/) is a library for parsing and building CAN messages from DBC files
 * [`opendbc/car/`](opendbc/car/) is a high-level library for interfacing with cars using Python
+* [`opendbc/safety/`](opendbc/safety/) is the functional safety for all the cars supported by `opendbc/car/`
 
 ## How to Port a Car
 
@@ -115,6 +116,29 @@ Longer term
 - [ ] [Automatic Emergency Braking](https://en.wikipedia.org/wiki/Automated_emergency_braking_system)
 
 Contributions towards anything here are welcome.
+
+## Safety Model
+
+When a [panda](https://comma.ai/shop/panda) powers up with [opendbc safety firmware](opendbc/safety), by default it's in `SAFETY_SILENT` mode. While in `SAFETY_SILENT` mode, the CAN buses are forced to be silent. In order to send messages, you have to select a safety mode. Some of safety modes (for example `SAFETY_ALLOUTPUT`) are disabled in release firmwares. In order to use them, compile and flash your own build.
+
+Safety modes optionally support `controls_allowed`, which allows or blocks a subset of messages based on a customizable state in the board.
+
+## Code Rigor
+
+The opendbc safety firmware is written for its use in conjunction with [openpilot](https://github.com/commaai/openpilot) and [panda](https://github.com/commaai/panda). The safety firmware, through its safety model, provides and enforces the
+[openpilot safety](https://github.com/commaai/openpilot/blob/master/docs/SAFETY.md). Due to its critical function, it's important that the application code rigor within the `safety` folder is held to high standards.
+
+These are the [CI regression tests](https://github.com/commaai/opendbc/actions) we have in place:
+* A generic static code analysis is performed by [cppcheck](https://github.com/danmar/cppcheck/).
+* In addition, [cppcheck](https://github.com/danmar/cppcheck/) has a specific addon to check for [MISRA C:2012](https://misra.org.uk/) violations. See [current coverage](opendbc/safety/tests/misra/coverage_table).
+* Compiler options are relatively strict: the flags `-Wall -Wextra -Wstrict-prototypes -Werror` are enforced.
+* The [safety logic](opendbc/safety) is tested and verified by [unit tests](opendbc/safety/tests) for each supported car variant.
+
+The above tests are themselves tested by:
+* a [mutation test](opendbc/safety/tests/misra/test_mutation.py) on the MISRA coverage
+* 100% line coverage enforced on the safety unit tests
+
+In addition, we run the [ruff linter](https://github.com/astral-sh/ruff) and [mypy](https://mypy-lang.org/) on the car interface library.
 
 ### Bounties
 
