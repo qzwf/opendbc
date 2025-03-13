@@ -46,9 +46,9 @@ class CarInterface(CarInterfaceBase):
             ret.longitudinalTuning.kpV = [1.5, 1.3, 1.0]
             ret.longitudinalActuatorDelay = 0.4
 
-        else:
-            ret.dashcamOnly = True
-            ret.safetyModel = structs.CarParams.SafetyModel.noOutput
+        # else:
+        #     ret.dashcamOnly = True
+        #     ret.safetyModel = structs.CarParams.SafetyModel.noOutput
 
         ret.longitudinalTuning.kiBP = [0., 5., 20.]
         ret.longitudinalTuning.kiV = [0.32, 0.23, 0.12]

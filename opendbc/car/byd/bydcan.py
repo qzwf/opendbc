@@ -5,14 +5,14 @@ VisualAlert = structs.CarControl.HUDControl.VisualAlert
 
 
 def byd_checksum(byte_key, dat):
-    first_bytes_sum = sum(byte >> 4 for byte in dat)
-    second_bytes_sum = sum(byte & 0xF for byte in dat)
-    remainder = second_bytes_sum >> 4
-    second_bytes_sum += byte_key >> 4
-    first_bytes_sum += byte_key & 0xF
-    first_part = ((-first_bytes_sum + 0x9) & 0xF)
-    second_part = ((-second_bytes_sum + 0x9) & 0xF)
-    return (((first_part + (-remainder + 5)) << 4) + second_part) & 0xFF
+  first_bytes_sum = sum(byte >> 4 for byte in dat)
+  second_bytes_sum = sum(byte & 0xF for byte in dat)
+  remainder = second_bytes_sum >> 4
+  second_bytes_sum += byte_key >> 4
+  first_bytes_sum += byte_key & 0xF
+  first_part = ((-first_bytes_sum + 0x9) & 0xF)
+  second_part = ((-second_bytes_sum + 0x9) & 0xF)
+  return (((first_part + (-remainder + 5)) << 4) + second_part) & 0xFF
 
 # MPC -> Panda -> EPS
 
