@@ -2,27 +2,33 @@
 import numpy as np
 from opendbc.car import get_safety_config, structs
 from opendbc.car.common.conversions import Conversions as CV
-from opendbc.car.common.numpy_fast import interp
+from opendbc.car.disable_ecu import disable_ecu
 from opendbc.car.honda.hondacan import CanBus
 from opendbc.car.honda.values import CarControllerParams, HondaFlags, CAR, HONDA_BOSCH, \
-    HONDA_NIDEC_ALT_SCM_MESSAGES, HONDA_BOSCH_RADARLESS, HondaSafetyFlags
+                                                 HONDA_NIDEC_ALT_SCM_MESSAGES, HONDA_BOSCH_RADARLESS, HondaSafetyFlags
+from opendbc.car.honda.carcontroller import CarController
+from opendbc.car.honda.carstate import CarState
+from opendbc.car.honda.radar_interface import RadarInterface
 from opendbc.car.interfaces import CarInterfaceBase
-from opendbc.car.disable_ecu import disable_ecu
 
 TransmissionType = structs.CarParams.TransmissionType
 
 
 class CarInterface(CarInterfaceBase):
-    @staticmethod
-    def get_pid_accel_limits(CP, current_speed, cruise_speed):
-        if CP.carFingerprint in HONDA_BOSCH:
-            return CarControllerParams.BOSCH_ACCEL_MIN, CarControllerParams.BOSCH_ACCEL_MAX
-        else:
-            # NIDECs don't allow acceleration near cruise_speed,
-            # so limit limits of pid to prevent windup
-            ACCEL_MAX_VALS = [CarControllerParams.NIDEC_ACCEL_MAX, 0.2]
-            ACCEL_MAX_BP = [cruise_speed - 2., cruise_speed - .2]
-            return CarControllerParams.NIDEC_ACCEL_MIN, np.interp(current_speed, ACCEL_MAX_BP, ACCEL_MAX_VALS)
+  CarState = CarState
+  CarController = CarController
+  RadarInterface = RadarInterface
+
+  @staticmethod
+  def get_pid_accel_limits(CP, current_speed, cruise_speed):
+    if CP.carFingerprint in HONDA_BOSCH:
+      return CarControllerParams.BOSCH_ACCEL_MIN, CarControllerParams.BOSCH_ACCEL_MAX
+    else:
+      # NIDECs don't allow acceleration near cruise_speed,
+      # so limit limits of pid to prevent windup
+      ACCEL_MAX_VALS = [CarControllerParams.NIDEC_ACCEL_MAX, 0.2]
+      ACCEL_MAX_BP = [cruise_speed - 2., cruise_speed - .2]
+      return CarControllerParams.NIDEC_ACCEL_MIN, np.interp(current_speed, ACCEL_MAX_BP, ACCEL_MAX_VALS)
 
         @staticmethod
         def _get_params(ret: structs.CarParams, candidate, fingerprint, car_fw, experimental_long, docs) -> structs.CarParams:
