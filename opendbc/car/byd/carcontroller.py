@@ -108,8 +108,7 @@ class CarController(CarControllerBase):
         #         self.packer, self.CP, CS.cam_acc, accel, CC.enabled))
 
         new_actuators = CC.actuators.as_builder()
-        new_actuators.steer = self.apply_steer_last / CarControllerParams.STEER_MAX
-        new_actuators.steerOutputCan = self.apply_steer_last
+        new_actuators.steeringAngleDeg = self.apply_steer_last
 
         self.frame += 1
         return new_actuators, can_sends
