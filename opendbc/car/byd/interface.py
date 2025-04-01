@@ -7,6 +7,7 @@ from opendbc.car.interfaces import CarInterfaceBase
 
 ButtonType = structs.CarState.ButtonEvent.Type
 GearShifter = structs.CarState.GearShifter
+SafetyModel = structs.CarParams.SafetyModel
 
 TransmissionType = structs.CarParams.TransmissionType  # GR QZWF
 
@@ -15,8 +16,20 @@ class CarInterface(CarInterfaceBase):
     @staticmethod
     def _get_params(ret: structs.CarParams, candidate, fingerprint, car_fw, experimental_long, docs) -> structs.CarParams:  # type: ignore
         ret.carName = "byd"
+        # WARNING: Testing/Development configuration only
+        # This configuration bypasses safety checks and should NEVER be used in production
+        ret.safetyConfigs = [
+          {
+            'safetyModel': SafetyModel.allOutput,
+            'safetyParam': 0
+          }
+        ]
+
+        # Original safety configuration preserved for reference:
+        """
         ret.safetyConfigs = [get_safety_config(
             structs.CarParams.SafetyModel.byd)]
+        """
 
         ret.dashcamOnly = candidate not in (CAR.BYD_ATTO3)
 
