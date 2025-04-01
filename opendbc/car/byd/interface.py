@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-from opendbc.car import get_safety_config, structs, STD_CARGO_KG, scale_rot_inertia, scale_tire_stiffness
+# from opendbc.car import get_safety_config
+from opendbc.car import structs, STD_CARGO_KG, scale_rot_inertia, scale_tire_stiffness
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.byd.values import CAR, HUD_MULTIPLIER
 from opendbc.car.interfaces import CarInterfaceBase
@@ -19,10 +20,10 @@ class CarInterface(CarInterfaceBase):
         # WARNING: Testing/Development configuration only
         # This configuration bypasses safety checks and should NEVER be used in production
         ret.safetyConfigs = [
-          {
-            'safetyModel': SafetyModel.allOutput,
-            'safetyParam': 0
-          }
+            {
+                'safetyModel': SafetyModel.allOutput,
+                'safetyParam': 0
+            }
         ]
 
         # Original safety configuration preserved for reference:
