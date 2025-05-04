@@ -3,7 +3,7 @@ from opendbc.can.can_define import CANDefine
 from opendbc.can.parser import CANParser
 from opendbc.car import structs, Bus
 from opendbc.car.common.conversions import Conversions as CV
-from opendbc.car.common.numpy_fast import mean
+from numpy import mean
 from opendbc.car.interfaces import CarStateBase
 from opendbc.car.byd.values import DBC
 
@@ -326,7 +326,7 @@ class CarState(CarStateBase):
         return {
             Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, 0),
             Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], cam_messages, 2),
-            }
+        }
 
     # @staticmethod
     # def get_cam_can_parsers(CP):
@@ -337,4 +337,3 @@ class CarState(CarStateBase):
     #     ]
 
     #     return {Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.cam], messages, 2)}
-
