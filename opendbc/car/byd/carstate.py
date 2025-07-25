@@ -160,7 +160,7 @@ class CarState(CarStateBase):
         #                     cp.vl["BCM"]["RearLeftDoor"],  cp.vl["BCM"]["RearRightDoor"]])
 
         # ret.gas = cp.vl["PEDAL"]["AcceleratorPedal"]  # commenting since AcceleratorPedal is not present in byd_general_pt.dbc
-        ret.gasPressed = (ret.gas != 0)
+        # ret.gasPressed = (ret.gas != 0)  # deprecated, using direct gas pedal reading below
 
         # commenting ret.cruiseState.available as it contains lkas_isMainSwOn, ACC_MPC_STATE and lkas_hud_AccOn1 which is not present in byd_general_pt.dbc
         # ret.cruiseState.available = lkas_isMainSwOn and lkas_config_isAccOn and lkas_hud_AccOn1
@@ -214,8 +214,8 @@ class CarState(CarStateBase):
             self.is_cruise_latch = False
 
         # gas pedal
-        ret.gas = cp.vl["PEDAL"]['GAS_PEDAL']
-        ret.gasPressed = ret.gas > 0.01
+        gas_pedal = cp.vl["PEDAL"]['GAS_PEDAL']
+        ret.gasPressed = gas_pedal > 0.01
 
         # brake pedal
         ret.brake = cp.vl["PEDAL"]['BRAKE_PEDAL']
