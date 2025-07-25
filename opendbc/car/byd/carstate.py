@@ -1,9 +1,7 @@
 import copy
-from opendbc.can.can_define import CANDefine
-from opendbc.can.parser import CANParser
+from opendbc.can.parser import CANDefine, CANParser
 from opendbc.car import structs, Bus
 from opendbc.car.common.conversions import Conversions as CV
-import numpy as np
 from opendbc.car.interfaces import CarStateBase
 from opendbc.car.byd.values import DBC
 
@@ -95,18 +93,13 @@ class CarState(CarStateBase):
 # EV irrelevant messages
         ret.brakeHoldActive = False
 
-        ret.wheelSpeeds = self.get_wheel_speeds(
+        self.parse_wheel_speeds(ret,
             cp.vl["WHEEL_SPEED"]['WHEELSPEED_FL'],
             cp.vl["WHEEL_SPEED"]['WHEELSPEED_FR'],
             cp.vl["WHEEL_SPEED"]['WHEELSPEED_BL'],
             # TODO: why would BR make the value wrong? Wheelspeed sensor prob?
             cp.vl["WHEEL_SPEED"]['WHEELSPEED_BL'],
         )
-        ret.vEgoRaw = float(np.mean([ret.wheelSpeeds.rr, ret.wheelSpeeds.rl,
-                                     ret.wheelSpeeds.fr, ret.wheelSpeeds.fl]))
-
-        # unfiltered speed from CAN sensors
-        ret.vEgo, ret.aEgo = self.update_speed_kf(ret.vEgoRaw)
         ret.vEgoCluster = ret.vEgo
         # ret.standstill = ret.vEgoRaw < 0.05
 
