@@ -36,9 +36,9 @@ class TestBYDFingerprint:
         # Check that extra_ecus contains the expected ECUs
         extra_ecu_addrs = {addr for (ecu, addr, sub_addr) in FW_QUERY_CONFIG.extra_ecus}
 
-        # Verify that key ECU addresses are present
-        expected_addrs = {0x7E0, 0x7D0, 0x760, 0x732, 0x706, 0x1E2, 0x316, 0x32D, 0x32E,
-                         0x320, 0x321, 0x322, 0x323, 0x1FC, 0x11F}
+        # Verify that data collection ECU addresses are present (essential ECUs should NOT be in extra_ecus)
+        expected_addrs = {0x7D0, 0x706, 0x1E2, 0x316, 0x32D, 0x32E,
+                         0x320, 0x321, 0x322, 0x323}
 
         for addr in expected_addrs:
             assert addr in extra_ecu_addrs, f"Expected ECU address {addr:#x} not found in extra_ecus"

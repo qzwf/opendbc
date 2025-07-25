@@ -109,13 +109,15 @@ FW_QUERY_CONFIG = FwQueryConfig(
         ),
     ],
     extra_ecus=[
-        # Essential ECUs for fingerprinting
-        (Ecu.engine, 0x7E0, None),          # Engine Control Module (UDS)
-        (Ecu.abs, 0x760, None),             # ABS Control Module (UDS)
-        (Ecu.eps, 0x732, None),             # Electric Power Steering (UDS)
-        (Ecu.eps, 0x1FC, None),             # Added based on the test failures
+        # Essential ECUs for fingerprinting - these should NOT be in extra_ecus
+        # They are handled by the non-logging request above
+        # (Ecu.engine, 0x7E0, None),          # Engine Control Module (UDS) - REMOVED: used for fingerprinting
+        # (Ecu.abs, 0x760, None),             # ABS Control Module (UDS) - REMOVED: used for fingerprinting
+        # (Ecu.eps, 0x732, None),             # Electric Power Steering (UDS) - REMOVED: used for fingerprinting
+        # (Ecu.eps, 0x1FC, None),             # REMOVED: used for fingerprinting
+        # (Ecu.eps, 0x11F, None),             # REMOVED: used for fingerprinting
 
-        # Data collection ECUs - not used for fingerprinting
+        # Data collection ECUs - not used for fingerprinting (logging=True request)
         (Ecu.gateway, 0x7D0, None),         # Body Control Module/Gateway (UDS)
         (Ecu.hvac, 0x706, None),            # HVAC Control Module (UDS)
         (Ecu.adas, 0x1E2, None),            # STEERING_MODULE_ADAS
@@ -126,7 +128,6 @@ FW_QUERY_CONFIG = FwQueryConfig(
         (Ecu.hybrid, 0x321, None),          # Motor Controller 1
         (Ecu.hybrid, 0x322, None),          # Motor Controller 2
         (Ecu.hybrid, 0x323, None),          # Charging System
-        (Ecu.eps, 0x11F, None),             # STEER_MODULE_2
     ]
 )
 
