@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
-# from opendbc.car import get_safety_config
-from opendbc.car import structs, STD_CARGO_KG, scale_rot_inertia, scale_tire_stiffness
+from opendbc.car import get_safety_config, structs, STD_CARGO_KG, scale_rot_inertia, scale_tire_stiffness
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.byd.values import CAR, HUD_MULTIPLIER
+from opendbc.car.byd.carstate import CarState
+from opendbc.car.byd.carcontroller import CarController
 from opendbc.car.interfaces import CarInterfaceBase
 
 ButtonType = structs.CarState.ButtonEvent.Type
@@ -14,25 +15,18 @@ TransmissionType = structs.CarParams.TransmissionType  # GR QZWF
 
 
 class CarInterface(CarInterfaceBase):
+    CarState = CarState
+    CarController = CarController
+
     @staticmethod
-    def _get_params(ret: structs.CarParams, candidate, fingerprint, car_fw, experimental_long, docs) -> structs.CarParams:  # type: ignore
-        ret.carName = "byd"
-        # WARNING: Testing/Development configuration only
-        # This configuration bypasses safety checks and should NEVER be used in production
-        ret.safetyConfigs = [
-            {
-                'safetyModel': SafetyModel.allOutput,
-                'safetyParam': 0
-            }
-        ]
+    def _get_params(ret: structs.CarParams, candidate, fingerprint, car_fw, alpha_long, is_release, docs) -> structs.CarParams:
+        ret.brand = "byd"
 
-        # Original safety configuration preserved for reference:
-        """
-        ret.safetyConfigs = [get_safety_config(
-            structs.CarParams.SafetyModel.byd)]
-        """
+        # Use proper safety configuration for BYD vehicles
+        # For now, using allOutput for development - should be replaced with proper BYD safety model
+        ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.allOutput)]
 
-        ret.dashcamOnly = candidate not in (CAR.BYD_ATTO3)
+        ret.dashcamOnly = candidate not in (CAR.BYD_ATTO3,)
 
         ret.safetyConfigs[0].safetyParam = 1
         ret.transmissionType = TransmissionType.automatic
@@ -77,8 +71,6 @@ class CarInterface(CarInterfaceBase):
             ret.mass, ret.wheelbase, ret.centerToFront, tire_stiffness_factor=tire_stiffness_factor)
 
         CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
-
-        ret.experimentalLongitudinalAvailable = False
 
         ret.minSteerSpeed = 2 * CV.KPH_TO_MS
 

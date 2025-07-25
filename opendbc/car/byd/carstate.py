@@ -3,7 +3,7 @@ from opendbc.can.can_define import CANDefine
 from opendbc.can.parser import CANParser
 from opendbc.car import structs, Bus
 from opendbc.car.common.conversions import Conversions as CV
-from opendbc.car.common.numpy_fast import mean
+import numpy as np
 from opendbc.car.interfaces import CarStateBase
 from opendbc.car.byd.values import DBC
 
@@ -102,8 +102,8 @@ class CarState(CarStateBase):
             # TODO: why would BR make the value wrong? Wheelspeed sensor prob?
             cp.vl["WHEEL_SPEED"]['WHEELSPEED_BL'],
         )
-        ret.vEgoRaw = mean([ret.wheelSpeeds.rr, ret.wheelSpeeds.rl,
-                           ret.wheelSpeeds.fr, ret.wheelSpeeds.fl])
+        ret.vEgoRaw = float(np.mean([ret.wheelSpeeds.rr, ret.wheelSpeeds.rl,
+                                     ret.wheelSpeeds.fr, ret.wheelSpeeds.fl]))
 
         # unfiltered speed from CAN sensors
         ret.vEgo, ret.aEgo = self.update_speed_kf(ret.vEgoRaw)
