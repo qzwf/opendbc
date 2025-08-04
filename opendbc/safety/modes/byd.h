@@ -45,19 +45,19 @@ static const CanMsg BYD_TX_MSGS_LIST[] = {
 };
 
 static uint8_t byd_get_counter(const CANPacket_t *msg) {
-  int addr = GET_ADDR(msg);
+  int addr = msg->addr;
   
   uint8_t cnt = 0;
   if (addr == 0x1FC) {          // STEERING_TORQUE
-    cnt = (GET_BYTE(msg, 6) >> 4) & 0xFU;
+    cnt = (msg->data[6] >> 4) & 0xFU;
   } else if (addr == 0x1E2) {   // STEERING_MODULE_ADAS
-    cnt = (GET_BYTE(msg, 6) >> 4) & 0xFU;
+    cnt = (msg->data[6] >> 4) & 0xFU;
   } else if (addr == 0x342) {   // PEDAL
-    cnt = (GET_BYTE(msg, 6) >> 4) & 0xFU;
+    cnt = (msg->data[6] >> 4) & 0xFU;
   } else if (addr == 0x220) {   // Vehicle speed (example)
-    cnt = (GET_BYTE(msg, 7) >> 4) & 0xFU;
+    cnt = (msg->data[7] >> 4) & 0xFU;
   } else if (addr == 0x3B0) {   // PCM_BUTTONS
-    cnt = (GET_BYTE(msg, 6) >> 4) & 0xFU;
+    cnt = (msg->data[6] >> 4) & 0xFU;
   } else {
     // Unknown message - no counter
   }
@@ -65,19 +65,19 @@ static uint8_t byd_get_counter(const CANPacket_t *msg) {
 }
 
 static uint32_t byd_get_checksum(const CANPacket_t *msg) {
-  int addr = GET_ADDR(msg);
+  int addr = msg->addr;
   
   uint8_t chksum = 0;
   if (addr == 0x1FC) {          // STEERING_TORQUE
-    chksum = GET_BYTE(msg, 7) & 0xFFU;
+    chksum = msg->data[7] & 0xFFU;
   } else if (addr == 0x1E2) {   // STEERING_MODULE_ADAS
-    chksum = GET_BYTE(msg, 7) & 0xFFU;
+    chksum = msg->data[7] & 0xFFU;
   } else if (addr == 0x342) {   // PEDAL
-    chksum = GET_BYTE(msg, 7) & 0xFFU;
+    chksum = msg->data[7] & 0xFFU;
   } else if (addr == 0x220) {   // Vehicle speed
-    chksum = GET_BYTE(msg, 7) & 0xFFU;
+    chksum = msg->data[7] & 0xFFU;
   } else if (addr == 0x3B0) {   // PCM_BUTTONS
-    chksum = GET_BYTE(msg, 7) & 0xFFU;
+    chksum = msg->data[7] & 0xFFU;
   } else {
     // Unknown message - no checksum
   }
@@ -85,7 +85,7 @@ static uint32_t byd_get_checksum(const CANPacket_t *msg) {
 }
 
 static uint32_t byd_compute_checksum(const CANPacket_t *msg) {
-  int addr = GET_ADDR(msg);
+  int addr = msg->addr;
   
   uint8_t chksum = 0;
   // Simple sum of nibbles checksum (similar to Hyundai)
@@ -93,7 +93,7 @@ static uint32_t byd_compute_checksum(const CANPacket_t *msg) {
     if ((addr == 0x1E2) && (i == 7)) {
       continue; // exclude checksum byte
     }
-    uint8_t b = GET_BYTE(msg, i);
+    uint8_t b = msg->data[i];
     if (((addr == 0x1FC) && (i == 7)) || 
         ((addr == 0x1E2) && (i == 7)) ||
         ((addr == 0x342) && (i == 7))) {
@@ -107,8 +107,8 @@ static uint32_t byd_compute_checksum(const CANPacket_t *msg) {
 }
 
 static void byd_rx_hook(const CANPacket_t *msg) {
-  int bus = GET_BUS(msg);
-  int addr = GET_ADDR(msg);
+  int bus = msg->bus;
+  int addr = msg->addr;
 
   if (bus == 0) {
     // Monitor steering torque from driver (STEERING_TORQUE message)
@@ -125,8 +125,8 @@ static void byd_rx_hook(const CANPacket_t *msg) {
     // Monitor gas and brake pedals (PEDAL message)
     if (addr == 0x342) {
       // GAS_PEDAL at bit 0, BRAKE_PEDAL at bit 8 (from DBC)
-      int gas_pedal_raw = GET_BYTE(msg, 0);
-      int brake_pedal_raw = GET_BYTE(msg, 1);
+      int gas_pedal_raw = msg->data[0];
+      int brake_pedal_raw = msg->data[1];
       
       // Scale by 0.01 from DBC
       gas_pressed = (gas_pedal_raw > 5); // > 0.05 threshold
@@ -168,7 +168,7 @@ static bool byd_tx_hook(const CANPacket_t *msg) {
   const TorqueSteeringLimits BYD_STEERING_LIMITS = BYD_LIMITS(300, 3, 7);
   
   bool tx = true;
-  int addr = GET_ADDR(msg);
+  int addr = msg->addr;
 
   // STEERING_MODULE_ADAS: safety check for steering commands
   if (addr == 0x1E2) {
