@@ -24,7 +24,7 @@ class CarInterface(CarInterfaceBase):
 
         # Use proper safety configuration for BYD vehicles
         # For now, using allOutput for development - should be replaced with proper BYD safety model
-        ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.allOutput)]
+        ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.byd)]
 
         ret.dashcamOnly = candidate not in (CAR.BYD_ATTO3,)
 

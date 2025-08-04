@@ -88,46 +88,55 @@ BUTTONS = [
            "PCM_BUTTONS", "BTN_AccCancel", [0x01]),
 ]
 
-# Firmware query configuration for BYD vehicles
-# Optimized for fast fingerprinting while maintaining comprehensive ECU coverage
+# Enhanced firmware query configuration for BYD vehicles
+# Designed to be comprehensive while providing fallback options
 FW_QUERY_CONFIG = FwQueryConfig(
     requests=[
-        # Primary UDS query for essential ECUs - optimized for speed
+        # Primary UDS query for standard ECUs - essential for fingerprinting
         Request(
             [StdQueries.UDS_VERSION_REQUEST],
             [StdQueries.UDS_VERSION_RESPONSE],
-            whitelist_ecus=[Ecu.engine, Ecu.abs, Ecu.eps],
+            whitelist_ecus=[Ecu.engine, Ecu.abs, Ecu.eps, Ecu.hvac, Ecu.gateway, Ecu.adas],
             bus=0,
         ),
-        # Data collection query for additional ECUs
+        # Query for EV-specific ECUs - battery and motor systems
         Request(
             [StdQueries.UDS_VERSION_REQUEST],
             [StdQueries.UDS_VERSION_RESPONSE],
-            whitelist_ecus=[Ecu.hvac, Ecu.gateway, Ecu.adas, Ecu.hybrid],
+            whitelist_ecus=[Ecu.hybrid, Ecu.electricBrakeBooster],
             bus=0,
-            logging=True,
+            logging=True,  # These are for data collection, not essential for fingerprinting
         ),
     ],
     extra_ecus=[
-        # Essential ECUs for fingerprinting - these should NOT be in extra_ecus
-        # They are handled by the non-logging request above
-        # (Ecu.engine, 0x7E0, None),          # Engine Control Module (UDS) - REMOVED: used for fingerprinting
-        # (Ecu.abs, 0x760, None),             # ABS Control Module (UDS) - REMOVED: used for fingerprinting
-        # (Ecu.eps, 0x732, None),             # Electric Power Steering (UDS) - REMOVED: used for fingerprinting
-        # (Ecu.eps, 0x1FC, None),             # REMOVED: used for fingerprinting
-        # (Ecu.eps, 0x11F, None),             # REMOVED: used for fingerprinting
-
-        # Data collection ECUs - not used for fingerprinting (logging=True request)
-        (Ecu.gateway, 0x7D0, None),         # Body Control Module/Gateway (UDS)
-        (Ecu.hvac, 0x706, None),            # HVAC Control Module (UDS)
-        (Ecu.adas, 0x1E2, None),            # STEERING_MODULE_ADAS
-        (Ecu.adas, 0x316, None),            # LKAS_HUD_ADAS
-        (Ecu.adas, 0x32D, None),            # ACC_HUD_ADAS
-        (Ecu.adas, 0x32E, None),            # ACC_CMD
-        (Ecu.hybrid, 0x320, None),          # Battery Management System
-        (Ecu.hybrid, 0x321, None),          # Motor Controller 1
-        (Ecu.hybrid, 0x322, None),          # Motor Controller 2
-        (Ecu.hybrid, 0x323, None),          # Charging System
+        # Standard OBD-II ECUs (most reliable for fingerprinting)
+        (Ecu.engine, 0x7E0, None),              # Engine Control Module (UDS)
+        (Ecu.abs, 0x760, None),                 # ABS Control Module (UDS)
+        (Ecu.eps, 0x732, None),                 # Electric Power Steering (UDS)
+        (Ecu.hvac, 0x7B3, None),                # HVAC Control Module (confirmed working)
+        (Ecu.hvac, 0x706, None),                # HVAC Control Module (alternative address)
+        (Ecu.gateway, 0x7D0, None),             # Body Control Module/Gateway (UDS)
+        
+        # ADAS ECUs (critical for OpenPilot functionality)
+        (Ecu.adas, 0x1E2, None),                # STEERING_MODULE_ADAS (482 decimal)
+        (Ecu.adas, 0x316, None),                # LKAS_HUD_ADAS (790 decimal)
+        (Ecu.adas, 0x32D, None),                # ACC_HUD_ADAS (813 decimal)
+        (Ecu.adas, 0x32E, None),                # ACC_CMD (814 decimal)
+        
+        # EV-specific ECUs (BYD ATTO3 is electric)
+        (Ecu.hybrid, 0x320, None),              # Battery Management System (800 decimal)
+        (Ecu.hybrid, 0x321, None),              # Motor Controller 1 (801 decimal)
+        (Ecu.hybrid, 0x322, None),              # Motor Controller 2 (802 decimal)
+        (Ecu.hybrid, 0x323, None),              # Charging System (803 decimal)
+        
+        # Additional steering system ECUs
+        (Ecu.eps, 0x1FC, None),                 # STEERING_TORQUE (508 decimal)
+        (Ecu.eps, 0x11F, None),                 # STEER_MODULE_2 (287 decimal)
+        
+        # Other detected ECUs from CAN analysis (using electricBrakeBooster for misc)
+        (Ecu.electricBrakeBooster, 0x55, None), # Address 85 decimal
+        (Ecu.electricBrakeBooster, 0x8C, None), # Address 140 decimal
+        (Ecu.electricBrakeBooster, 0xD5, None), # Address 213 decimal
     ]
 )
 
