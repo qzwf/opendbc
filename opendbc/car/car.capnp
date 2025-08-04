@@ -630,6 +630,7 @@ struct CarParams {
     body @27;
     hyundaiCanfd @28;
     volkswagenMqbEvo @29;
+    byd @30;
     chryslerCusw @30;
     psa @31;
     fcaGiorgio @32;
