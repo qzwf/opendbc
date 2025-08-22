@@ -39,13 +39,13 @@ class CarInterface(CarInterfaceBase):
         ret.steerActuatorDelay = 0.1
         ret.steerLimitTimer = 0.4
 
-        # Lateral tuning - PID controller
-        ret.lateralTuning.init('pid')
-        ret.lateralTuning.pid.kiBP = [0.]
-        ret.lateralTuning.pid.kpBP = [0.]
-        ret.lateralTuning.pid.kpV = [0.25]
-        ret.lateralTuning.pid.kiV = [0.05]
-        ret.lateralTuning.pid.kf = 0.00004
+        # Lateral tuning - Use torque controller instead of PID for torque-based steering
+        # Configure torque tune using the base class method which will use BYD-specific parameters
+        CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+
+        # Set lateral torque parameters for BYD ATTO3 (torque limits)
+        ret.lateralParams.torqueBP = [0, 2560]  # Torque breakpoints
+        ret.lateralParams.torqueV = [0, 2560]   # Torque values (max torque limit)
 
         # Longitudinal tuning - ensure equal lengths for kp/ki BP and V arrays
         ret.longitudinalTuning.kpBP = [0., 35.]
