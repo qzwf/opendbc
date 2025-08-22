@@ -21,8 +21,8 @@ def dbc_dict(pt, radar):
 class CarControllerParams:
     # Steering limits and response rates
     STEER_MAX = 300                    # Maximum steering torque
-    STEER_DELTA_UP = 17               # Torque increase rate
-    STEER_DELTA_DOWN = 17             # Torque decrease rate
+    STEER_DELTA_UP = 7                # Torque increase rate (reduced for jerk limits)
+    STEER_DELTA_DOWN = 7              # Torque decrease rate (reduced for jerk limits)
 
     # Driver intervention thresholds
     STEER_DRIVER_ALLOWANCE = 68       # Torque allowance before intervention
@@ -116,9 +116,6 @@ FW_QUERY_CONFIG = FwQueryConfig(
 
         # EV-Specific ECUs (BYD ATTO3 is electric)
         (Ecu.hybrid, 0x320, None),   # Battery Management System
-        (Ecu.hybrid, 0x321, None),     # Motor Controller 1
-        (Ecu.hybrid, 0x322, None),     # Motor Controller 2
-        (Ecu.hybrid, 0x323, None),  # Charging System
 
         # Vehicle State & Control ECUs
         (Ecu.transmission, 0x242, None),  # DRIVE_STATE (578)

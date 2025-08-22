@@ -35,7 +35,7 @@ def get_fuzzy_car_interface_args(draw: DrawType) -> dict:
   # only pick from possible ecus to reduce search space
   car_fw_strategy = st.lists(st.builds(
     lambda fw, req: structs.CarParams.CarFw(ecu=fw[0], address=fw[1], subAddress=fw[2] or 0, request=req),
-    st.sampled_from(sorted(ALL_ECUS)),
+    st.sampled_from(sorted(ALL_ECUS, key=lambda t: (t[0], t[1], -1 if t[2] is None else t[2]))),
     st.sampled_from(sorted(ALL_REQUESTS)),
   ))
 

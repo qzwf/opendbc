@@ -105,67 +105,6 @@ FW_VERSIONS: dict[str, dict[tuple, list[bytes]]] = {
             b'\\xf1\\x8b\\x00\\x00\\x00\\xff',  # Confirmed firmware from ECU discovery
         ],
 
-        # ===== CRITICAL ADAS ECUs (Based on ECU discovery + DBC analysis) =====
-        # Electric Power Steering - CRITICAL for OpenPilot steering control
-        (Ecu.eps, 0x730, None): [
-            # Firmware to be extracted - ECU confirmed responding with 487+ messages
-            # High priority for firmware extraction
-        ],
-
-        # Forward Camera - CRITICAL for OpenPilot vision processing
-        (Ecu.fwdCamera, 0x7c0, None): [
-            # Firmware to be extracted - ECU confirmed responding with 573+ messages
-            # Application Software ID service working
-        ],
-
-        # ===== ADAS DISPLAY/CONTROL ECUs =====
-        # LKAS HUD Display - Lane Keep Assist System display
-        # Request: 0x316, Response: 0x31E, BYD Proprietary Protocol with checksum 0xAF
-        (Ecu.adas, 0x316, None): [
-            b'\\x03\\x10\\x00\\x00\\xa0\\x00\\x00\\x4c',  # LKAS_HUD_ADAS - Verified with BYD checksum
-        ],
-
-        # ACC HUD Display - Adaptive Cruise Control display
-        # From DBC: ACC_HUD_ADAS (813) - CAN ID 0x32d
-        (Ecu.unknown, 0x32d, None): [
-            # Firmware to be extracted - ECU confirmed responding with 513+ messages
-            # Multiple UDS services working
-        ],
-
-        # ACC Command Module - Adaptive Cruise Control commands
-        # From DBC: ACC_CMD (814) - CAN ID 0x32e
-        (Ecu.unknown, 0x32e, None): [
-            # Firmware to be extracted - ECU confirmed responding with 556+ messages
-            # Application Software ID service working
-        ],
-
-        # ===== BRAKING/SAFETY SYSTEMS =====
-        # ABS Control Module (alternative address)
-        (Ecu.abs, 0x760, None): [
-            # Firmware to be extracted - ECU confirmed responding with 540+ messages
-            # Service 0x0902 working
-        ],
-
-        # Transmission Control Module
-        (Ecu.transmission, 0x7e1, None): [
-            # Firmware to be extracted - ECU confirmed responding with 523+ messages
-            # Tester Present service working
-        ],
-
-        # Gateway Control Module
-        (Ecu.gateway, 0x7d0, None): [
-            # Firmware to be extracted - ECU confirmed responding with 435+ messages
-            # Multiple services working including ECU Serial Number
-        ],
-
-        # ===== EV-SPECIFIC ECUs (BYD ATTO3 is electric) =====
-        # Battery Management System - From DBC analysis
-        # CAN ID 0x320 confirmed in fingerprint and ECU discovery
-        (Ecu.unknown, 0x320, None): [
-            # Firmware to be extracted - address confirmed in fingerprint
-            # Battery-specific ECU for electric vehicle
-        ],
-
         # Motor Controller 1 - EV Powertrain Control
         # Request: 0x321, Response: 0x341, BYD Proprietary Protocol with checksum 0xAF
         (Ecu.hybrid, 0x321, None): [
@@ -185,28 +124,6 @@ FW_VERSIONS: dict[str, dict[tuple, list[bytes]]] = {
         # Request: 0x323, Response: 0x343, BYD Proprietary Protocol with checksum 0xAF
         (Ecu.hybrid, 0x323, None): [
             b'\\xff\\xff\\x3f\\x9c\\xff\\xfc\\x09\\x22',  # Charging_System - Verified with BYD checksum
-        ],
-
-        # ===== ADDITIONAL CRITICAL ECUs FOR OPENPILOT =====
-        # ADAS Steering Module - From DBC: STEERING_MODULE_ADAS (482)
-        # CAN ID 0x1e2 - CRITICAL for lane keeping assist
-        (Ecu.unknown, 0x1e2, None): [
-            # Firmware to be extracted - address confirmed in fingerprint
-            # Essential for OpenPilot LKAS functionality
-        ],
-
-        # Steering Torque Sensor - From DBC: STEERING_TORQUE (508)
-        # CAN ID 0x1fc - Important for driver monitoring
-        (Ecu.unknown, 0x1fc, None): [
-            # Firmware to be extracted - address confirmed in fingerprint
-            # Driver steering input detection
-        ],
-
-        # Forward Radar Module - Standard address for radar sensors
-        # CAN ID 0x750 - Important for ACC and collision avoidance
-        (Ecu.fwdRadar, 0x750, None): [
-            # Firmware to be extracted - standard radar address
-            # May not be present or responding yet
         ],
     }
 }
