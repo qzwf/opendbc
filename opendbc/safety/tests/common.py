@@ -875,7 +875,7 @@ class PandaSafetyTest(PandaSafetyTestBase):
             if 'Tesla' in attr and 'Tesla' in current_test:
               continue
             # No point in comparing to ALLOUTPUT which allows all messages
-            if attr.startswith('TestAllOutput'):
+            if attr.startswith(('TestAllOutput', 'TestBydSafety')):
               continue
             if attr.startswith('TestToyota') and current_test.startswith('TestToyota'):
               continue

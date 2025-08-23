@@ -1,11 +1,11 @@
 // BYD ATTO3 Safety Implementation
 // Based on BYD CAN message analysis and safety requirements
 
-#include "safety_declarations.h"
+#include "opendbc/safety/safety_declarations.h"
 
 // BYD CAN message IDs from fingerprint analysis
 #define BYD_STEERING_MODULE_ADAS 0x1E2  // 482 - Steering control
-#define BYD_ACC_CMD 0x32E               // 814 - ACC commands  
+#define BYD_ACC_CMD 0x32E               // 814 - ACC commands
 #define BYD_LKAS_HUD_ADAS 0x316         // 790 - LKAS HUD
 #define BYD_ACC_HUD_ADAS 0x32D          // 813 - ACC HUD
 #define BYD_STEERING_TORQUE 0x1FC       // 508 - Steering torque
@@ -26,19 +26,19 @@
 static uint8_t byd_checksum(uint8_t byte_key, uint8_t *dat, int len) {
   int first_bytes_sum = 0;
   int second_bytes_sum = 0;
-  
+
   for (int i = 0; i < len - 1; i++) {  // Exclude checksum byte
     first_bytes_sum += dat[i] >> 4;
     second_bytes_sum += dat[i] & 0xF;
   }
-  
+
   int remainder = second_bytes_sum >> 4;
   second_bytes_sum += byte_key >> 4;
   first_bytes_sum += byte_key & 0xF;
-  
+
   int first_part = ((-first_bytes_sum + 0x9) & 0xF);
   int second_part = ((-second_bytes_sum + 0x9) & 0xF);
-  
+
   return (((first_part + (-remainder + 5)) << 4) + second_part) & 0xFF;
 }
 
@@ -72,7 +72,7 @@ static int byd_rx_hook(CANPacket_t *to_push) {
 
     // Steering torque from driver
     if ((bus == 0) && (addr == BYD_STEERING_TORQUE)) {
-      int torque_driver_new = ((GET_BYTE(to_push, 0) & 0xFFU) | 
+      int torque_driver_new = ((GET_BYTE(to_push, 0) & 0xFFU) |
                               ((GET_BYTE(to_push, 1) & 0xFFU) << 8));
       torque_driver_new = to_signed(torque_driver_new, 16);
       update_sample(&byd_torque_driver, torque_driver_new);
@@ -84,7 +84,7 @@ static int byd_rx_hook(CANPacket_t *to_push) {
       gas_pressed = gas_pedal > 5;  // 5% threshold
     }
 
-    // Brake pedal  
+    // Brake pedal
     if ((bus == 0) && (addr == BYD_DRIVE_STATE)) {
       brake_pressed = GET_BIT(to_push, 16);  // BRAKE_PRESSED bit
     }
@@ -109,15 +109,15 @@ static int byd_tx_hook(CANPacket_t *to_send) {
   if (bus == 0) {
     // Steering control message
     if (addr == BYD_STEERING_MODULE_ADAS) {
-      int desired_torque = ((GET_BYTE(to_send, 0) & 0xFFU) | 
+      int desired_torque = ((GET_BYTE(to_send, 0) & 0xFFU) |
                            ((GET_BYTE(to_send, 1) & 0xFFU) << 8));
       desired_torque = to_signed(desired_torque, 16);
 
       // Verify checksum
       uint8_t checksum = GET_BYTE(to_send, 7);
-      uint8_t expected_checksum = byd_checksum(BYD_CHECKSUM_KEY, 
+      uint8_t expected_checksum = byd_checksum(BYD_CHECKSUM_KEY,
                                               GET_BYTES(to_send), 8);
-      
+
       if (checksum != expected_checksum) {
         tx = 0;  // Reject message with bad checksum
       }
@@ -125,18 +125,18 @@ static int byd_tx_hook(CANPacket_t *to_send) {
       // Safety checks
       if (controls_allowed) {
         // Torque rate limit
-        int violation = max_limit_check(desired_torque, byd_desired_torque_last, 
+        int violation = max_limit_check(desired_torque, byd_desired_torque_last,
                                        &byd_ts_last, BYD_MAX_RATE_UP, BYD_MAX_RATE_DOWN);
-        
+
         // Absolute torque limit
-        violation |= max_limit_check(desired_torque, BYD_MAX_STEER, 
+        violation |= max_limit_check(desired_torque, BYD_MAX_STEER,
                                     -BYD_MAX_STEER, 0, 0);
 
         // Driver override check
         int torque_driver = get_sample(&byd_torque_driver);
-        violation |= driver_limit_check(desired_torque, byd_desired_torque_last, 
-                                       &byd_torque_driver, BYD_DRIVER_TORQUE_ALLOWANCE, 
-                                       BYD_DRIVER_TORQUE_FACTOR, BYD_MAX_STEER, 
+        violation |= driver_limit_check(desired_torque, byd_desired_torque_last,
+                                       &byd_torque_driver, BYD_DRIVER_TORQUE_ALLOWANCE,
+                                       BYD_DRIVER_TORQUE_FACTOR, BYD_MAX_STEER,
                                        -BYD_MAX_STEER, BYD_MAX_RATE_UP, BYD_MAX_RATE_DOWN);
 
         if (violation) {
@@ -154,8 +154,8 @@ static int byd_tx_hook(CANPacket_t *to_send) {
     }
 
     // Block other control messages when controls not allowed
-    if (!controls_allowed && 
-        ((addr == BYD_ACC_CMD) || (addr == BYD_LKAS_HUD_ADAS) || 
+    if (!controls_allowed &&
+        ((addr == BYD_ACC_CMD) || (addr == BYD_LKAS_HUD_ADAS) ||
          (addr == BYD_ACC_HUD_ADAS))) {
       tx = 0;
     }
