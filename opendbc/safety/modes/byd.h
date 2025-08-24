@@ -189,6 +189,7 @@ const safety_hooks byd_hooks = {
   .init = byd_init,
   .rx = byd_rx_hook,
   .tx = byd_tx_hook,
-  .tx_lin = nooutput_tx_lin_hook,
+  // .tx_lin = nooutput_tx_lin_hook,
+  .tx_lin = alloutput_tx_lin_hook,
   .fwd = byd_fwd_hook,
 };
