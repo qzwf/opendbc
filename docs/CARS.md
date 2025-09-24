@@ -93,7 +93,7 @@
 |Honda|Civic Hatchback 2017-18|Honda Sensing|[Upstream](#upstream)|
 |Honda|Civic Hatchback 2019-21|All|[Upstream](#upstream)|
 |Honda|Civic Hatchback 2022-24|All|[Upstream](#upstream)|
-|Honda|Civic Hatchback Hybrid 2025|All|[Upstream](#upstream)|
+|Honda|Civic Hatchback Hybrid 2025-26|All|[Upstream](#upstream)|
 |Honda|Civic Hatchback Hybrid (Europe only) 2023|All|[Upstream](#upstream)|
 |Honda|Civic Hybrid 2025|All|[Upstream](#upstream)|
 |Honda|Clarity 2018-21|All|[Community](#community)|
@@ -109,10 +109,11 @@
 |Honda|HR-V 2023-25|All|[Upstream](#upstream)|
 |Honda|Insight 2019-22|All|[Upstream](#upstream)|
 |Honda|Inspire 2018|All|[Upstream](#upstream)|
+|Honda|N-Box 2018|All|[Upstream](#upstream)|
 |Honda|Odyssey 2018-20|Honda Sensing|[Upstream](#upstream)|
-|Honda|Odyssey 2021-25|All|[Community](#community)|
+|Honda|Odyssey 2021-25|All|[Upstream](#upstream)|
 |Honda|Passport 2019-25|All|[Upstream](#upstream)|
-|Honda|Passport 2026|All|[Community](#community)|
+|Honda|Passport 2026|All|[Upstream](#upstream)|
 |Honda|Pilot 2016-22|Honda Sensing|[Upstream](#upstream)|
 |Honda|Pilot 2023-25|All|[Upstream](#upstream)|
 |Honda|Prologue 2024-25|All|[Not compatible](#can-bus-security)|
@@ -285,7 +286,7 @@
 |Tesla|Model 3 (with HW4) 2024-25|All|[Upstream](#upstream)|
 |Tesla|Model X (with HW4) 2024|All|[Dashcam mode](#dashcam)|
 |Tesla|Model Y (with HW3) 2020-23|All|[Upstream](#upstream)|
-|Tesla|Model Y (with HW4) 2024|All|[Upstream](#upstream)|
+|Tesla|Model Y (with HW4) 2024-25|All|[Upstream](#upstream)|
 |Toyota|Alphard 2019-20|All|[Upstream](#upstream)|
 |Toyota|Alphard Hybrid 2021|All|[Upstream](#upstream)|
 |Toyota|Avalon 2016|Toyota Safety Sense P|[Upstream](#upstream)|
@@ -424,7 +425,6 @@ Supported Models' section of each make [on our wiki](https://wiki.comma.ai/).
 Some notable works-in-progress:
 * Honda
   * 2022-24 Acura RDX, commaai/opendbc#1967
-  * 2021-25 Honda Odyssey, commaai/opendbc#2488
   * Camera ACC stability improvements, commaai/opendbc#2192
   * Alpha longitudinal stability improvements, commaai/opendbc#2347 and commaai/opendbc#2165
 
