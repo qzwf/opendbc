@@ -30,6 +30,7 @@ non_tested_cars = [
   SUBARU.SUBARU_FORESTER_HYBRID,
   VOLKSWAGEN.PORSCHE_MACAN_MK1,
   HONDA.ACURA_TLX_2G,  # FIXME: replace expired route
+  HONDA.HONDA_NBOX_2G,  # FIXME: replace expired route
 ]
 
 
