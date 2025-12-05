@@ -2,7 +2,7 @@
 from opendbc.car.structs import CarParams
 from opendbc.safety.tests.libsafety import libsafety_py
 import opendbc.safety.tests.common as common
-from opendbc.safety.tests.common import CANPackerPanda
+from opendbc.safety.tests.common import CANPackerSafety
 
 # BYD CAN message IDs
 MSG_BYD_STEERING_MODULE_ADAS = 0x1E2  # 482
@@ -12,7 +12,7 @@ MSG_BYD_PEDAL = 0x200                 # 512
 MSG_BYD_DRIVE_STATE = 0x134           # 308
 
 
-class TestBydSafety(common.PandaSafetyTest):
+class TestBydSafety(common.SafetyTest):
   """BYD ATTO3 safety tests
 
   This is a minimal test class for BYD since there's no dedicated BYD safety mode yet.
@@ -28,7 +28,7 @@ class TestBydSafety(common.PandaSafetyTest):
   FWD_BUS_LOOKUP = {}  # noOutput mode doesn't forward anything
 
   def setUp(self):
-    self.packer = CANPackerPanda("byd_general")
+    self.packer = CANPackerSafety("byd_general")
     self.safety = libsafety_py.libsafety
     self.safety.set_safety_hooks(CarParams.SafetyModel.noOutput, 0)
     self.safety.init_tests()
