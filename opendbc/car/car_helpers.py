@@ -141,13 +141,6 @@ def fingerprint(can_recv: CanRecvCallable, can_send: CanSendCallable, set_obd_mu
     car_fingerprint = fixed_fingerprint
     source = CarParams.FingerprintSource.fixed
 
-  # Force BYD ATTO3 if no fingerprint matched (bypass for development/testing)
-  # REMOVE THIS IN PRODUCTION - for BYD ATTO3 development only
-  if car_fingerprint is None:
-    carlog.warning("No fingerprint match - forcing BYD ATTO3 for development")
-    car_fingerprint = "BYD ATTO3"
-    source = CarParams.FingerprintSource.fixed
-
   carlog.error({"event": "fingerprinted", "car_fingerprint": str(car_fingerprint), "source": source, "fuzzy": not exact_match,
                 "cached": cached, "fw_count": len(car_fw), "ecu_responses": list(ecu_rx_addrs), "vin_rx_addr": vin_rx_addr,
                 "vin_rx_bus": vin_rx_bus, "fingerprints": repr(finger), "fw_query_time": fw_query_time})
