@@ -32,8 +32,8 @@ class CarState(CarStateBase):
         self.wheel_speeds = [0., 0., 0., 0.]
 
         # Gear and drive state
-        self.gear_shifter = structs.CarParams.GearShifter.park
-        self.gear_shifter_prev = structs.CarParams.GearShifter.park
+        self.gear_shifter = structs.CarState.GearShifter.park
+        self.gear_shifter_prev = structs.CarState.GearShifter.park
 
         # ADAS states
         self.acc_active = False
@@ -51,6 +51,8 @@ class CarState(CarStateBase):
 
         # Previous values for change detection
         self.gear_shifter_prev = self.gear_shifter
+        self.counter_prev = 0
+        self.adas_counter_prev = 0
 
     def update(self, cp, cp_cam):
         ret = structs.CarState()
@@ -82,10 +84,10 @@ class CarState(CarStateBase):
             self.brake_pressed = bool(cp.vl["DRIVE_STATE"]["BRAKE_PRESSED"])
 
             # Gear state mapping
-            gear_map = {1: structs.CarParams.GearShifter.park,
-                       2: structs.CarParams.GearShifter.reverse,
-                       4: structs.CarParams.GearShifter.drive}
-            self.gear_shifter = gear_map.get(cp.vl["DRIVE_STATE"]["GEAR"], structs.CarParams.GearShifter.unknown)
+            gear_map = {1: structs.CarState.GearShifter.park,
+                       2: structs.CarState.GearShifter.reverse,
+                       4: structs.CarState.GearShifter.drive}
+            self.gear_shifter = gear_map.get(cp.vl["DRIVE_STATE"]["GEAR"], structs.CarState.GearShifter.unknown)
 
         # Additional brake detection from PEDAL_PRESSED
         if "PEDAL_PRESSED" in cp.vl_all:
@@ -161,6 +163,38 @@ class CarState(CarStateBase):
         self.adas_counter_prev = cp.vl_all["STEERING_MODULE_ADAS"]["COUNTER"] if "STEERING_MODULE_ADAS" in cp.vl_all else 0
         self.gear_shifter_prev = self.gear_shifter
 
+        # Populate return struct with current state
+        ret.steeringAngleDeg = self.steering_angle
+        ret.steeringRateDeg = self.steering_rate
+        ret.steeringTorque = self.steering_torque
+        ret.steeringPressed = self.steering_pressed
+
+        ret.gas = self.pedal_gas
+        ret.brake = self.pedal_brake
+        ret.brakePressed = self.brake_pressed
+
+        ret.vEgo = self.v_ego_raw
+        ret.vEgoRaw = self.v_ego_raw
+        ret.wheelSpeeds = structs.WheelSpeeds(
+            fl=self.wheel_speeds[0],
+            fr=self.wheel_speeds[1],
+            rl=self.wheel_speeds[2],
+            rr=self.wheel_speeds[3],
+        )
+
+        ret.gearShifter = self.gear_shifter
+        ret.cruiseState.enabled = self.acc_active
+        ret.cruiseState.speed = self.cruise_speed
+        ret.cruiseState.available = self.main_on
+
+        ret.doorOpen = self.door_open
+        ret.seatbeltUnlatched = not self.seatbelt_driver
+
+        ret.buttonEvents = self.button_events
+
+        # BYD-specific states
+        ret.lkasEnabled = self.lkas_enabled
+
         return ret
 
     @staticmethod
@@ -195,10 +229,10 @@ class CarState(CarStateBase):
             ("BSM", 10),                      # 1048 - Blind spot monitoring
         ]
 
-        return CANParser(messages, CanBus.pt)
+        return CANParser(CP.carFingerprint, messages, CanBus.pt)
 
     @staticmethod
     def get_cam_can_parser(CP):
         # Camera CAN messages (if any)
         messages = []
-        return CANParser(messages, CanBus.cam)
+        return CANParser(CP.carFingerprint, messages, CanBus.cam)
