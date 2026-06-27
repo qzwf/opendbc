@@ -3,6 +3,8 @@ from opendbc.car.interfaces import CarInterfaceBase
 from opendbc.car.byd.carstate import CarState
 from opendbc.car.byd.carcontroller import CarController
 
+NetworkLocation = structs.CarParams.NetworkLocation
+
 ButtonType = structs.CarState.ButtonEvent.Type
 GearShifter = structs.CarState.GearShifter
 
@@ -31,6 +33,8 @@ class CarInterface(CarInterfaceBase):
         ret.longitudinalTuning.kpV = [1.2, 0.5]
         ret.longitudinalTuning.kiBP = [0., 35.]
         ret.longitudinalTuning.kiV = [0.18, 0.12]
+
+        ret.networkLocation = NetworkLocation.fwdCamera
 
         ret.openpilotLongitudinalControl = False
         ret.pcmCruise = True

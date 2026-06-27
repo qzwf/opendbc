@@ -94,17 +94,17 @@ class CarState(CarStateBase):
     @staticmethod
     def get_can_parsers(CP):
         pt_messages = [
-            ("STEER_MODULE_2", 50),
-            ("STEERING_TORQUE", 50),
-            ("PEDAL", 50),
-            ("PEDAL_PRESSED", 10),
-            ("DRIVE_STATE", 10),
-            ("WHEEL_SPEED", 50),
-            ("ACC_HUD_ADAS", 10),
-            ("LKAS_HUD_ADAS", 10),
-            ("METER_CLUSTER", 10),
-            ("PCM_BUTTONS", 10),
-            ("STALKS", 10),
+            ("STEER_MODULE_2", 0),
+            ("STEERING_TORQUE", 0),
+            ("PEDAL", 0),
+            ("PEDAL_PRESSED", 0),
+            ("DRIVE_STATE", 0),
+            ("WHEEL_SPEED", 0),
+            ("ACC_HUD_ADAS", 0),
+            ("LKAS_HUD_ADAS", 0),
+            ("METER_CLUSTER", 0),
+            ("PCM_BUTTONS", 0),
+            ("STALKS", 0),
         ]
         return {
             Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, 0),
