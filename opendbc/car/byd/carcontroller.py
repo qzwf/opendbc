@@ -53,11 +53,13 @@ class CarController(CarControllerBase):
             self.acc_idx += 1
 
         # === HUD CONTROL ===
-        lkas_hud_active = CC.latActive
-        can_sends.append(bydcan.create_lkas_hud(
-            self.packer, lkas_hud_active, hud_control.leftLaneVisible,
-            hud_control.rightLaneVisible, self.lkas_idx))
-        self.lkas_idx += 1
+        # Only send LKAS_HUD_ADAS when actively engaged — camera owns this CAN ID
+        # when we're not steering; competing at 100 Hz vs camera's 50 Hz causes bus errors
+        if CC.latActive:
+            can_sends.append(bydcan.create_lkas_hud(
+                self.packer, True, hud_control.leftLaneVisible,
+                hud_control.rightLaneVisible, self.lkas_idx))
+            self.lkas_idx += 1
 
         if self.CP.openpilotLongitudinalControl:
             acc_hud_active = CC.enabled

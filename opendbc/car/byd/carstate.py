@@ -18,9 +18,10 @@ class CarState(CarStateBase):
         ret = structs.CarState.new_message()
 
         # --- Steering ---
-        ret.steeringAngleDeg = cp.vl["STEER_MODULE_2"]["STEER_ANGLE_2"] * 0.1
-        ret.steeringTorque = cp.vl["STEERING_TORQUE"]["MAIN_TORQUE"] * 0.1
-        ret.steeringPressed = abs(ret.steeringTorque) > 3.0
+        # DBC already applies 0.1 factor; cp.vl returns degrees / Nm directly
+        ret.steeringAngleDeg = cp.vl["STEER_MODULE_2"]["STEER_ANGLE_2"]
+        ret.steeringTorque = cp.vl["STEERING_TORQUE"]["MAIN_TORQUE"]
+        ret.steeringPressed = abs(ret.steeringTorque) > 30.0
 
         # --- Pedals ---
         ret.gasPressed = cp.vl["PEDAL"]["GAS_PEDAL"] > 1.0
@@ -41,10 +42,11 @@ class CarState(CarStateBase):
                                        structs.CarState.GearShifter.unknown)
 
         # --- Wheel speeds ---
-        fl = cp.vl["WHEEL_SPEED"]["WHEELSPEED_FL"] * 0.1
-        fr = cp.vl["WHEEL_SPEED"]["WHEELSPEED_FR"] * 0.1
-        rl = cp.vl["WHEEL_SPEED"]["WHEELSPEED_BL"] * 0.1
-        rr = cp.vl["WHEEL_SPEED"]["WHEELSPEED_BR"] * 0.1
+        # DBC factor 0.1 already applied (gives km/h); convert to m/s for OpenPilot
+        fl = cp.vl["WHEEL_SPEED"]["WHEELSPEED_FL"] / 3.6
+        fr = cp.vl["WHEEL_SPEED"]["WHEELSPEED_FR"] / 3.6
+        rl = cp.vl["WHEEL_SPEED"]["WHEELSPEED_BL"] / 3.6
+        rr = cp.vl["WHEEL_SPEED"]["WHEELSPEED_BR"] / 3.6
         ret.wheelSpeeds.fl = fl
         ret.wheelSpeeds.fr = fr
         ret.wheelSpeeds.rl = rl
@@ -55,13 +57,13 @@ class CarState(CarStateBase):
         # --- Cruise / ACC --- (read from camera bus 2 — native source)
         acc_on = bool(cp_cam.vl["ACC_HUD_ADAS"]["ACC_ON1"]) and bool(cp_cam.vl["ACC_HUD_ADAS"]["ACC_ON2"])
         ret.cruiseState.enabled = acc_on
-        ret.cruiseState.speed = cp_cam.vl["ACC_HUD_ADAS"]["SET_SPEED"] * 0.5
+        # DBC SET_SPEED factor 0.5 already applied (gives km/h); convert to m/s
+        ret.cruiseState.speed = cp_cam.vl["ACC_HUD_ADAS"]["SET_SPEED"] / 3.6
         ret.cruiseState.available = acc_on
 
-        # LKAS active — stock camera LKAS signal (read from bus 2 native source)
-        lkas_active = (not bool(cp_cam.vl["LKAS_HUD_ADAS"]["STEER_ACTIVE_ACTIVE_LOW"]) or
-                       bool(cp_cam.vl["LKAS_HUD_ADAS"]["STEER_ACTIVE_1_1"]))
-        ret.stockLkas = lkas_active
+        # Camera LKAS is always active on bus 2; don't surface it as stockLkas
+        # because it would fire noEntry permanently and block all engagement
+        ret.stockLkas = False
 
         # --- Safety ---
         ret.seatbeltUnlatched = not bool(cp.vl["METER_CLUSTER"]["SEATBELT_DRIVER"])
