@@ -46,12 +46,15 @@ class CarState(CarStateBase):
         fl = cp.vl["WHEEL_SPEED"]["WHEELSPEED_FL"] / 3.6
         fr = cp.vl["WHEEL_SPEED"]["WHEELSPEED_FR"] / 3.6
         rl = cp.vl["WHEEL_SPEED"]["WHEELSPEED_BL"] / 3.6
-        rr = cp.vl["WHEEL_SPEED"]["WHEELSPEED_BR"] / 3.6
+        # WHEELSPEED_BR (bits 48-63): byte 7 is a constant status byte (0x41),
+        # NOT the high byte of the wheel speed. DBC wrongly declares it as 16-bit.
+        # Until the DBC is corrected, derive RR from the other three wheels.
+        rr = (fl + fr + rl) / 3.0
         ret.wheelSpeeds.fl = fl
         ret.wheelSpeeds.fr = fr
         ret.wheelSpeeds.rl = rl
         ret.wheelSpeeds.rr = rr
-        ret.vEgoRaw = (fl + fr + rl + rr) / 4.0
+        ret.vEgoRaw = (fl + fr + rl) / 3.0
         ret.vEgo, ret.aEgo = self.update_speed_kf(ret.vEgoRaw)
 
         # --- Cruise / ACC --- (read from camera bus 2 — native source)
