@@ -16,10 +16,10 @@ class CarInterface(CarInterfaceBase):
     @staticmethod
     def _get_params(ret, candidate, fingerprint, car_fw, alpha_long, is_release, docs):
         ret.brand = "byd"
-        # allOutput with param=1 (PASSTHROUGH): relay engaged + forwarding enabled.
-        # param=0 sets disable_forwarding=True which cuts camera<->car CAN entirely,
-        # causing "MMW Radar not available" and "MVC not available" in the car's HUD.
-        ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.allOutput, 1)]
+        # SAFETY_BYD: relay engaged, forwards all camera messages except STEERING_MODULE_ADAS
+        # when controls_allowed (OpenPilot steering active). Camera ADAS/ACC/AEB always pass
+        # through — car retains priority. OpenPilot sends steering on bus 0 directly to EPS.
+        ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.byd)]
         ret.radarUnavailable = True
 
         ret.steerControlType = structs.CarParams.SteerControlType.torque

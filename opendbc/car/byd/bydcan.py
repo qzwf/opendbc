@@ -47,7 +47,7 @@ def create_steering_control(packer, apply_steer, steer_req, idx):
     set_me_1_2 = 1
 
     values = {
-        "STEER_ANGLE": apply_steer * 10,  # Convert to DBC units (0.1 deg)
+        "STEER_ANGLE": apply_steer,  # DBC units (factor 0.1 deg → max 300 = 30 deg)
         "STEER_REQ": steer_req_active,
         "STEER_REQ_ACTIVE_LOW": steer_req_active_low,
         "SET_ME_FF": set_me_ff,
@@ -60,14 +60,16 @@ def create_steering_control(packer, apply_steer, steer_req, idx):
         "CHECKSUM": 0,  # Temporary, will be calculated below
     }
 
-    # Create message with temporary checksum
-    msg = packer.make_can_msg("STEERING_MODULE_ADAS", CanBus.cam, values)
+    # Send on bus 0 (directly to EPS on car CAN bus).
+    # panda SAFETY_BYD blocks the camera's version (bus 2) from forwarding to bus 0
+    # when controls_allowed, so only our command reaches the EPS.
+    msg = packer.make_can_msg("STEERING_MODULE_ADAS", CanBus.pt, values)
 
     # Calculate and set proper BYD checksum
     checksum = byd_checksum(CHECKSUM_KEY, msg[1])
     values["CHECKSUM"] = checksum
 
-    return packer.make_can_msg("STEERING_MODULE_ADAS", CanBus.cam, values)
+    return packer.make_can_msg("STEERING_MODULE_ADAS", CanBus.pt, values)
 
 
 def create_acc_control(packer, acc_cmd, acc_enabled, idx):
