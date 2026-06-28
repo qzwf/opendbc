@@ -35,7 +35,8 @@ class CarController(CarControllerBase):
 
         steer_req = CC.latActive
 
-        if self.CP.carFingerprint == CAR.BYD_ATTO3:
+        # Only send when actively controlling — avoids fighting the stock camera LKAS on bus 2
+        if self.CP.carFingerprint == CAR.BYD_ATTO3 and CC.latActive:
             can_sends.append(bydcan.create_steering_control(
                 self.packer, apply_steer, steer_req, self.steer_idx))
             self.steer_idx += 1

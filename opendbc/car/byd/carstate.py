@@ -13,7 +13,8 @@ class CarState(CarStateBase):
         self.counter_prev = 0
 
     def update(self, can_parsers) -> structs.CarState:
-        cp = can_parsers[Bus.pt]
+        cp = can_parsers[Bus.pt]       # bus 0: car-side chassis CAN
+        cp_cam = can_parsers[Bus.cam]  # bus 2: camera-side chassis CAN
         ret = structs.CarState.new_message()
 
         # --- Steering ---
@@ -51,15 +52,15 @@ class CarState(CarStateBase):
         ret.vEgoRaw = (fl + fr + rl + rr) / 4.0
         ret.vEgo, ret.aEgo = self.update_speed_kf(ret.vEgoRaw)
 
-        # --- Cruise / ACC ---
-        acc_on = bool(cp.vl["ACC_HUD_ADAS"]["ACC_ON1"]) and bool(cp.vl["ACC_HUD_ADAS"]["ACC_ON2"])
+        # --- Cruise / ACC --- (read from camera bus 2 — native source)
+        acc_on = bool(cp_cam.vl["ACC_HUD_ADAS"]["ACC_ON1"]) and bool(cp_cam.vl["ACC_HUD_ADAS"]["ACC_ON2"])
         ret.cruiseState.enabled = acc_on
-        ret.cruiseState.speed = cp.vl["ACC_HUD_ADAS"]["SET_SPEED"] * 0.5
+        ret.cruiseState.speed = cp_cam.vl["ACC_HUD_ADAS"]["SET_SPEED"] * 0.5
         ret.cruiseState.available = acc_on
 
-        # LKAS active — stock LKAS signal exposed for reference
-        lkas_active = (not bool(cp.vl["LKAS_HUD_ADAS"]["STEER_ACTIVE_ACTIVE_LOW"]) or
-                       bool(cp.vl["LKAS_HUD_ADAS"]["STEER_ACTIVE_1_1"]))
+        # LKAS active — stock camera LKAS signal (read from bus 2 native source)
+        lkas_active = (not bool(cp_cam.vl["LKAS_HUD_ADAS"]["STEER_ACTIVE_ACTIVE_LOW"]) or
+                       bool(cp_cam.vl["LKAS_HUD_ADAS"]["STEER_ACTIVE_1_1"]))
         ret.stockLkas = lkas_active
 
         # --- Safety ---
@@ -93,6 +94,7 @@ class CarState(CarStateBase):
 
     @staticmethod
     def get_can_parsers(CP):
+        # Bus 0: messages sent by car ECUs (EPS, BCM, wheel speed, pedals, etc.)
         pt_messages = [
             ("STEER_MODULE_2", 0),
             ("STEERING_TORQUE", 0),
@@ -100,12 +102,16 @@ class CarState(CarStateBase):
             ("PEDAL_PRESSED", 0),
             ("DRIVE_STATE", 0),
             ("WHEEL_SPEED", 0),
-            ("ACC_HUD_ADAS", 0),
-            ("LKAS_HUD_ADAS", 0),
             ("METER_CLUSTER", 0),
             ("PCM_BUTTONS", 0),
             ("STALKS", 0),
         ]
+        # Bus 2: messages sent by the ADAS camera module
+        cam_messages = [
+            ("ACC_HUD_ADAS", 0),
+            ("LKAS_HUD_ADAS", 0),
+        ]
         return {
             Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, 0),
+            Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.cam], cam_messages, 2),
         }

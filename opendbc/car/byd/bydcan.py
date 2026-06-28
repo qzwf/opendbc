@@ -61,13 +61,13 @@ def create_steering_control(packer, apply_steer, steer_req, idx):
     }
 
     # Create message with temporary checksum
-    msg = packer.make_can_msg("STEERING_MODULE_ADAS", CanBus.pt, values)
+    msg = packer.make_can_msg("STEERING_MODULE_ADAS", CanBus.cam, values)
 
     # Calculate and set proper BYD checksum
     checksum = byd_checksum(CHECKSUM_KEY, msg[1])
     values["CHECKSUM"] = checksum
 
-    return packer.make_can_msg("STEERING_MODULE_ADAS", CanBus.pt, values)
+    return packer.make_can_msg("STEERING_MODULE_ADAS", CanBus.cam, values)
 
 
 def create_acc_control(packer, acc_cmd, acc_enabled, idx):
@@ -115,13 +115,13 @@ def create_acc_control(packer, acc_cmd, acc_enabled, idx):
     }
 
     # Create message with temporary checksum
-    msg = packer.make_can_msg("ACC_CMD", CanBus.pt, values)
+    msg = packer.make_can_msg("ACC_CMD", CanBus.cam, values)
 
     # Calculate and set proper BYD checksum
     checksum = byd_checksum(CHECKSUM_KEY, msg[1])
     values["CHECKSUM"] = checksum
 
-    return packer.make_can_msg("ACC_CMD", CanBus.pt, values)
+    return packer.make_can_msg("ACC_CMD", CanBus.cam, values)
 
 
 def create_lkas_hud(packer, lkas_active, left_lane, right_lane, idx):
@@ -172,13 +172,13 @@ def create_lkas_hud(packer, lkas_active, left_lane, right_lane, idx):
     }
 
     # Create message with temporary checksum
-    msg = packer.make_can_msg("LKAS_HUD_ADAS", CanBus.pt, values)
+    msg = packer.make_can_msg("LKAS_HUD_ADAS", CanBus.cam, values)
 
     # Calculate and set proper BYD checksum
     checksum = byd_checksum(CHECKSUM_KEY, msg[1])
     values["CHECKSUM"] = checksum
 
-    return packer.make_can_msg("LKAS_HUD_ADAS", CanBus.pt, values)
+    return packer.make_can_msg("LKAS_HUD_ADAS", CanBus.cam, values)
 
 
 def create_acc_hud(packer, acc_active, set_speed, lead_visible, idx):
@@ -214,13 +214,13 @@ def create_acc_hud(packer, acc_active, set_speed, lead_visible, idx):
     }
 
     # Create message with temporary checksum
-    msg = packer.make_can_msg("ACC_HUD_ADAS", CanBus.pt, values)
+    msg = packer.make_can_msg("ACC_HUD_ADAS", CanBus.cam, values)
 
     # Calculate and set proper BYD checksum
     checksum = byd_checksum(CHECKSUM_KEY, msg[1])
     values["CHECKSUM"] = checksum
 
-    return packer.make_can_msg("ACC_HUD_ADAS", CanBus.pt, values)
+    return packer.make_can_msg("ACC_HUD_ADAS", CanBus.cam, values)
 
 
 def create_steering_torque(packer, main_torque, idx):

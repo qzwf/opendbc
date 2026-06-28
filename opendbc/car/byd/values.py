@@ -45,7 +45,10 @@ class BYDCarDocs(CarDocs):
 
 @dataclass
 class BYDPlatformConfig(PlatformConfig):
-    dbc_dict: dict = field(default_factory=lambda: dbc_dict('byd_general', None))
+    dbc_dict: dict = field(default_factory=lambda: {
+        Bus.pt: 'byd_general',   # bus 0: car-side chassis CAN
+        Bus.cam: 'byd_general',  # bus 2: camera-side chassis CAN
+    })
 
 
 # BYD Vehicle Models
@@ -64,10 +67,13 @@ class CAR(Platforms):
 
 
 # CAN Bus Configuration
+# Bus 0: Car-side chassis CAN (read car ECU signals from here)
+# Bus 1: Private CAN (camera image/radar output, CAN-FD frames)
+# Bus 2: Camera-side chassis CAN (camera sends ADAS messages here — send our overrides here)
 class CanBus:
-    pt = 0      # Powertrain bus
-    cam = 1     # Camera bus
-    radar = 2   # Radar bus (if equipped)
+    pt = 0      # Car-side chassis CAN (receive)
+    cam = 2     # Camera-side chassis CAN (send ADAS commands to compete with camera)
+    radar = 1   # Private CAN (camera image/radar data)
 
 
 # Button configurations for steering wheel controls
