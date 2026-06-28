@@ -16,8 +16,10 @@ class CarInterface(CarInterfaceBase):
     @staticmethod
     def _get_params(ret, candidate, fingerprint, car_fw, alpha_long, is_release, docs):
         ret.brand = "byd"
-        # allOutput allows all CAN signals through — required for development/tuning
-        ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.allOutput)]
+        # allOutput with param=1 (PASSTHROUGH): relay engaged + forwarding enabled.
+        # param=0 sets disable_forwarding=True which cuts camera<->car CAN entirely,
+        # causing "MMW Radar not available" and "MVC not available" in the car's HUD.
+        ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.allOutput, 1)]
         ret.radarUnavailable = True
 
         ret.steerControlType = structs.CarParams.SteerControlType.torque
