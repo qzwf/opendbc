@@ -42,10 +42,12 @@ class CarState(CarStateBase):
                                        structs.CarState.GearShifter.unknown)
 
         # --- Wheel speeds ---
-        # DBC factor 0.1 already applied (gives km/h); convert to m/s for OpenPilot
-        fl = cp.vl["WHEEL_SPEED"]["WHEELSPEED_FL"] / 3.6
-        fr = cp.vl["WHEEL_SPEED"]["WHEELSPEED_FR"] / 3.6
-        rl = cp.vl["WHEEL_SPEED"]["WHEELSPEED_BL"] / 3.6
+        # DBC factor 0.1 gives km/h, but BYD ATTO3 India raw values read ~32.5% high
+        # vs odometer at steady-state. Correction: 40/53. Verify with GPS if re-calibrating.
+        _SPD_CORR = 40.0 / 53.0
+        fl = cp.vl["WHEEL_SPEED"]["WHEELSPEED_FL"] * _SPD_CORR / 3.6
+        fr = cp.vl["WHEEL_SPEED"]["WHEELSPEED_FR"] * _SPD_CORR / 3.6
+        rl = cp.vl["WHEEL_SPEED"]["WHEELSPEED_BL"] * _SPD_CORR / 3.6
         # WHEELSPEED_BR (bits 48-63): byte 7 is a constant status byte (0x41),
         # NOT the high byte of the wheel speed. DBC wrongly declares it as 16-bit.
         # Until the DBC is corrected, derive RR from the other three wheels.

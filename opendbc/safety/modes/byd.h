@@ -56,16 +56,17 @@ static void byd_rx_hook(const CANPacket_t *to_push) {
     gas_pressed = to_push->data[0] > 10U;
   }
 
-  // Brake pedal — BRAKE_PRESSED: bit 37 @0+ (Motorola = Intel bit 37 for 1-bit signal)
-  // bit 37 = byte 4, bit 5 from LSB
+  // Brake pedal — BRAKE_PRESSED: 37|1@0+ (Motorola bit 37)
+  // Intel bit = (37/8)*8 + (7 - 37%8) = 32 + 2 = 34
   if ((bus == 0) && (addr == BYD_DRIVE_STATE)) {
-    brake_pressed = GET_BIT(to_push, 37U);
+    brake_pressed = GET_BIT(to_push, 34U);
   }
 
   // ACC engagement — sets controls_allowed on rising edge of ACC being on
-  // ACC_ON1: bit 22 @0+, ACC_ON2: bit 20 @0+ (Motorola = same Intel bit for 1-bit signals)
+  // ACC_ON1: 22|1@0+ → Intel bit (22/8)*8 + (7-22%8) = 16+1 = 17
+  // ACC_ON2: 20|1@0+ → Intel bit (20/8)*8 + (7-20%8) = 16+3 = 19
   if ((bus == 2) && (addr == BYD_ACC_HUD_ADAS)) {
-    bool cruise_engaged = GET_BIT(to_push, 22U) && GET_BIT(to_push, 20U);
+    bool cruise_engaged = GET_BIT(to_push, 17U) && GET_BIT(to_push, 19U);
     pcm_cruise_check(cruise_engaged);
   }
 }
@@ -87,12 +88,12 @@ static bool byd_tx_hook(const CANPacket_t *to_send) {
   uint32_t addr = to_send->addr;
 
   // Steering control sent on bus 0 (directly to EPS)
-  // STEER_ANGLE: bits 24-39 @1- (LE signed, bytes 3-4)
-  // STEER_REQ: bit 21 @0+ (Motorola = Intel bit 21 for 1-bit signal)
+  // STEER_ANGLE: 24|16@1- (LE signed, bytes 3-4)
+  // STEER_REQ: 21|1@0+ (Motorola bit 21) → Intel bit (21/8)*8 + (7-21%8) = 16+2 = 18
   if ((bus == 0) && (addr == BYD_STEERING_MODULE_ADAS)) {
     int desired_torque = (int)GET_BYTES(to_send, 3, 2);
     desired_torque = to_signed(desired_torque, 16);
-    int steer_req = GET_BIT(to_send, 21U) ? 1 : 0;
+    int steer_req = GET_BIT(to_send, 18U) ? 1 : 0;
 
     if (steer_torque_cmd_checks(desired_torque, steer_req, BYD_STEERING_LIMITS)) {
       tx = false;
