@@ -19,16 +19,22 @@ def dbc_dict(pt, radar):
 
 # BYD Car Controller Parameters - tuned for ATTO3
 class CarControllerParams:
-    # Steering limits and response rates
-    STEER_MAX = 300                    # Maximum steering torque
-    STEER_DELTA_UP = 7                # Torque increase rate (reduced for jerk limits)
-    STEER_DELTA_DOWN = 7              # Torque decrease rate (reduced for jerk limits)
+    # STEER_ANGLE DBC signal: factor=0.1 deg, so packer receives physical degrees.
+    # Panda max_torque=300 raw → 30 physical degrees. We limit to 10 deg for LKAS safety.
+    # steerRatio=14.8, wheelbase=2.72 → model max curvature 0.18 → ~7.4 deg needed.
+    STEER_MAX = 10                    # degrees (physical); panda raw limit = 100
+    # Rate in degrees/step at 100 Hz. Panda has two limits:
+    #   max_rate_up=10 raw/step  → DELTA * 10 ≤ 10 → DELTA ≤ 1.0 deg/step
+    #   max_rt_delta=50 raw/0.25s (25 steps) → DELTA * 10 * 25 ≤ 50 → DELTA ≤ 0.2 deg/step
+    # Use 0.15 for 25% margin on the tighter RT check. Ramp to 10 deg takes ~0.7 s.
+    STEER_DELTA_UP = 0.15             # degrees/step (raw delta=1.5, within panda RT limit)
+    STEER_DELTA_DOWN = 1.0            # degrees/step (faster release for safety)
 
-    # Driver intervention thresholds
-    STEER_DRIVER_ALLOWANCE = 80       # Raw DRIVER_EPS_TORQUE threshold; observed max ~52 during normal turns
-    STEER_DRIVER_MULTIPLIER = 3       # Driver torque multiplier
-    STEER_DRIVER_FACTOR = 1           # Additional scaling factor
-    STEER_ERROR_MAX = 50              # Maximum steering error allowed
+    # Driver intervention thresholds (DRIVER_EPS_TORQUE raw units, 0–255)
+    STEER_DRIVER_ALLOWANCE = 80       # observed max ~52 during normal turns; threshold for override
+    STEER_DRIVER_MULTIPLIER = 1       # reduction factor above allowance (gentler than default 3)
+    STEER_DRIVER_FACTOR = 1           # additional scaling factor
+    STEER_ERROR_MAX = 350             # not actively used but raised to avoid spurious faults
 
     # Control timing - 50Hz update rate
     STEER_STEP = 2
