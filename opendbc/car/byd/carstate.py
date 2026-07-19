@@ -28,11 +28,13 @@ class CarState(CarStateBase):
         # --- Pedals ---
         ret.gasPressed = cp.vl["PEDAL"]["GAS_PEDAL"] > 1.0
         ret.brake = cp.vl["PEDAL"]["BRAKE_PEDAL"] * 0.01
-        ret.brakePressed = bool(cp.vl["DRIVE_STATE"]["BRAKE_PRESSED"])
-
-        # Catch active-low pedal pressed signal
+        # PEDAL_PRESSED_ACTIVE_LOW: physical driver pedal contact switch (0=pressed, 1=released).
+        # Use this as primary — it does NOT fire during ACC autonomous braking.
+        # DRIVE_STATE BRAKE_PRESSED fires whenever hydraulic pressure is active (including ACC braking),
+        # causing false disengages when the car's ACC brakes for vehicles ahead without driver input.
+        ret.brakePressed = not bool(cp.vl["PEDAL_PRESSED"]["PEDAL_PRESSED_ACTIVE_LOW"])
         if not ret.brakePressed:
-            ret.brakePressed = not bool(cp.vl["PEDAL_PRESSED"]["PEDAL_PRESSED_ACTIVE_LOW"])
+            ret.brakePressed = cp.vl["PEDAL"]["BRAKE_PEDAL"] > 0.01
 
         # --- Gear ---
         gear_map = {
