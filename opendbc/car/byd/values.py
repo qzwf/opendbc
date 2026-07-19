@@ -25,7 +25,7 @@ class CarControllerParams:
     STEER_DELTA_DOWN = 7              # Torque decrease rate (reduced for jerk limits)
 
     # Driver intervention thresholds
-    STEER_DRIVER_ALLOWANCE = 68       # Torque allowance before intervention
+    STEER_DRIVER_ALLOWANCE = 80       # Raw DRIVER_EPS_TORQUE threshold; observed max ~52 during normal turns
     STEER_DRIVER_MULTIPLIER = 3       # Driver torque multiplier
     STEER_DRIVER_FACTOR = 1           # Additional scaling factor
     STEER_ERROR_MAX = 50              # Maximum steering error allowed

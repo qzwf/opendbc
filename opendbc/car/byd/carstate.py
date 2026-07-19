@@ -18,10 +18,12 @@ class CarState(CarStateBase):
         ret = structs.CarState.new_message()
 
         # --- Steering ---
-        # DBC already applies 0.1 factor; cp.vl returns degrees / Nm directly
         ret.steeringAngleDeg = cp.vl["STEER_MODULE_2"]["STEER_ANGLE_2"]
-        ret.steeringTorque = cp.vl["STEERING_TORQUE"]["MAIN_TORQUE"]
-        ret.steeringPressed = abs(ret.steeringTorque) > 30.0
+        # DRIVER_EPS_TORQUE (byte 2 of STEER_MODULE_2): actual column torque sensor, raw 0–255 unsigned.
+        # MAIN_TORQUE (STEERING_TORQUE 0x1FC) is total EPS motor output (100–900 Nm) — NOT driver input.
+        # Using MAIN_TORQUE caused steeringPressed=True constantly, blocking CC.latActive.
+        ret.steeringTorque = cp.vl["STEER_MODULE_2"]["DRIVER_EPS_TORQUE"]
+        ret.steeringPressed = ret.steeringTorque > 80  # raw threshold; observed max ~52 during normal turns
 
         # --- Pedals ---
         ret.gasPressed = cp.vl["PEDAL"]["GAS_PEDAL"] > 1.0
