@@ -29,7 +29,7 @@ static safety_config byd_init(uint16_t param) {
   // Messages we must monitor to maintain safety state
   static RxCheck byd_rx_checks[] = {
     {.msg = {{(int)BYD_STEERING_TORQUE,      0, 8, 100U, .ignore_checksum=true, .ignore_counter=true, .ignore_quality_flag=true}, {0}, {0}}},
-    {.msg = {{(int)BYD_STEER_MODULE_2,       0, 8, 100U, .ignore_checksum=true, .ignore_counter=true, .ignore_quality_flag=true}, {0}, {0}}},
+    {.msg = {{(int)BYD_STEER_MODULE_2,       0, 5, 100U, .ignore_checksum=true, .ignore_counter=true, .ignore_quality_flag=true}, {0}, {0}}},
     {.msg = {{(int)BYD_PEDAL,                0, 8,  50U, .ignore_checksum=true, .ignore_counter=true, .ignore_quality_flag=true}, {0}, {0}}},
     {.msg = {{(int)BYD_DRIVE_STATE,          0, 8,  50U, .ignore_checksum=true, .ignore_counter=true, .ignore_quality_flag=true}, {0}, {0}}},
     {.msg = {{(int)BYD_ACC_HUD_ADAS,         2, 8,  50U, .ignore_checksum=true, .ignore_counter=true, .ignore_quality_flag=true}, {0}, {0}}},
