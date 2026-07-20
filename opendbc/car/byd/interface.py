@@ -22,14 +22,12 @@ class CarInterface(CarInterfaceBase):
         ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.byd)]
         ret.radarUnavailable = True
 
-        ret.steerControlType = structs.CarParams.SteerControlType.torque
+        # BYD EPS receives absolute steering wheel angle targets in STEERING_MODULE_ADAS.
+        # Angle control sends actuators.steeringAngleDeg directly, which matches the EPS protocol.
+        # Torque control sent small corrections that fought every curve (EPS steered toward 0).
+        ret.steerControlType = structs.CarParams.SteerControlType.angle
         ret.steerActuatorDelay = 0.1
         ret.steerLimitTimer = 0.4
-
-        CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
-
-        ret.lateralParams.torqueBP = [0, 2560]
-        ret.lateralParams.torqueV = [0, 2560]
 
         ret.longitudinalTuning.kpBP = [0., 35.]
         ret.longitudinalTuning.kpV = [1.2, 0.5]

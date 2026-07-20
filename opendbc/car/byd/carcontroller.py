@@ -29,7 +29,10 @@ class CarController(CarControllerBase):
         can_sends = []
 
         # === STEERING CONTROL ===
-        new_steer = int(round(actuators.torque * self.params.STEER_MAX))
+        # BYD EPS takes absolute steering wheel angle targets. LatControlAngle computes
+        # actuators.steeringAngleDeg = curvature * steerRatio * wheelbase (in degrees).
+        # Sending this directly lets the EPS hold the correct angle through curves.
+        new_steer = int(round(actuators.steeringAngleDeg))
         apply_steer = apply_driver_steer_torque_limits(
             new_steer, self.apply_steer_last, CS.out.steeringTorque, self.params)
 
@@ -72,7 +75,7 @@ class CarController(CarControllerBase):
         self.acc_cmd_last = acc_cmd
 
         new_actuators = actuators.as_builder()
-        new_actuators.torque = apply_steer / self.params.STEER_MAX
+        new_actuators.steeringAngleDeg = apply_steer
         new_actuators.torqueOutputCan = apply_steer
 
         return new_actuators, can_sends
