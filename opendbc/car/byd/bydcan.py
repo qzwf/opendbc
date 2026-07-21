@@ -47,7 +47,7 @@ def create_steering_control(packer, apply_steer, steer_req, idx):
     set_me_1_2 = 1
 
     values = {
-        "STEER_ANGLE": apply_steer,  # DBC units (factor 0.1 deg → max 300 = 30 deg)
+        "STEER_ANGLE": apply_steer,  # degrees (DBC factor 0.1 → raw = deg × 10; panda max_torque=1000 raw = 100 deg)
         "STEER_REQ": steer_req_active,
         "STEER_REQ_ACTIVE_LOW": steer_req_active_low,
         "SET_ME_FF": set_me_ff,

@@ -73,12 +73,15 @@ static void byd_rx_hook(const CANPacket_t *to_push) {
 static bool byd_tx_hook(const CANPacket_t *to_send) {
   // STEER_ANGLE DBC factor 0.1 deg → raw 1000 = 100 physical degrees.
   // Angle control: EPS targets absolute steering wheel position.
-  // 100 degrees covers urban curves to ~50 km/h. Rate limits prevent sudden jolts.
+  // 100 degrees covers urban curves up to ~80 km/h.
+  // max_rate_up=10 raw/msg at 50 Hz → 50 deg/s peak ramp.
+  // max_rt_delta=125 raw / 250ms matches 50 deg/s (10 raw/msg × 12.5 msgs).
+  // max_rate_down=20 raw/msg matches carcontroller STEER_DELTA_DOWN=1.0 deg/call × 2 calls/msg.
   const TorqueSteeringLimits BYD_STEERING_LIMITS = {
     .max_torque = 1000,
     .max_rate_up = 10,
-    .max_rate_down = 10,
-    .max_rt_delta = 50,
+    .max_rate_down = 20,
+    .max_rt_delta = 125,
     .driver_torque_allowance = 100,
     .driver_torque_multiplier = 3,
     .type = TorqueDriverLimited,

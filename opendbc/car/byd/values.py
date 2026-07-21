@@ -23,10 +23,12 @@ class CarControllerParams:
     # BYD EPS uses absolute steering wheel angle targets (same units as STEER_ANGLE_2 sensor).
     # Panda max_torque=1000 raw → 100 physical degrees covers urban curves up to ~50 km/h.
     STEER_MAX = 100                   # degrees (physical); panda raw limit = 1000
-    # Rate at 50 Hz (STEER_STEP=2). Panda RT check: max change over 0.25s.
-    # At 50 Hz, 0.25s = 12.5 messages. DELTA_UP=0.35: raw 3.5/step * 12.5 = 43.75 < 50 RT limit.
-    STEER_DELTA_UP = 0.35             # degrees/step → 17.5 deg/s ramp rate (raw 3.5/step)
-    STEER_DELTA_DOWN = 1.0            # degrees/step → faster release (raw 10/step, at panda limit)
+    # Rate at 100 Hz carController; CAN sent at 50 Hz (STEER_STEP=2).
+    # Per CAN msg: DELTA_UP × 2 calls = 1.0 deg = 10 raw = panda max_rate_up limit.
+    # Over 250ms (12.5 CAN msgs): 12.5 × 10 = 125 raw = panda max_rt_delta limit.
+    # Effective ramp: 50 deg/s — reaches 30° in 0.6s, 50° in 1.0s.
+    STEER_DELTA_UP = 0.5              # degrees/call → 50 deg/s ramp rate (10 raw/CAN-msg)
+    STEER_DELTA_DOWN = 1.0            # degrees/call → 100 deg/s release (20 raw/CAN-msg, panda allows 20)
 
     # Driver intervention thresholds (DRIVER_EPS_TORQUE raw units, 0–255)
     STEER_DRIVER_ALLOWANCE = 80       # observed max ~52 during normal turns; threshold for override
