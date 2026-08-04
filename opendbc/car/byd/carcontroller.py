@@ -1,7 +1,10 @@
+import numpy as np
+
 from opendbc.can.packer import CANPacker
-from opendbc.car import Bus, structs
-from opendbc.car.byd.values import CAR, CarControllerParams
+from opendbc.car import Bus
+from opendbc.car.byd.values import CarControllerParams
 from opendbc.car.byd import bydcan
+from opendbc.car.lateral import apply_std_steer_angle_limits
 from opendbc.car.interfaces import CarControllerBase
 
 
@@ -12,14 +15,8 @@ class CarController(CarControllerBase):
         self.packer = CANPacker(dbc_names[Bus.pt])
         self.params = CarControllerParams(CP)
 
-        self.steer_idx = 0
+        self.apply_angle_last = 0.0
         self.acc_idx = 0
-        self.lkas_idx = 0
-
-        self.apply_steer_last = 0
-        self.steer_req_last = False
-
-        self.acc_cmd_last = 0
 
     def update(self, CC, CS, now_nanos):
         actuators = CC.actuators
@@ -28,69 +25,56 @@ class CarController(CarControllerBase):
 
         can_sends = []
 
-        # === STEERING CONTROL ===
-        # BYD EPS takes absolute steering wheel angle targets. LatControlAngle computes
-        # actuators.steeringAngleDeg = curvature * steerRatio * wheelbase (in degrees).
-        # Sending this directly lets the EPS hold the correct angle through curves.
-        new_steer = int(round(actuators.steeringAngleDeg))
-        apply_steer = apply_driver_steer_torque_limits(
-            new_steer, self.apply_steer_last, CS.out.steeringTorque, self.params)
+        # === STEERING ===
+        # The EPS is a position servo: STEER_ANGLE is an absolute wheel angle target.
+        # The command must therefore stay anchored to the measured angle at all times —
+        # a limiter that only tracks its own previous output can ratchet away from the
+        # wheel, saturate at the clamp and get every frame rejected by panda.
+        if self.frame % self.params.STEER_STEP == 0:
+            apply_angle = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.apply_angle_last,
+                                                       CS.out.vEgoRaw, CS.out.steeringAngleDeg,
+                                                       CC.latActive, self.params.ANGLE_LIMITS)
 
-        steer_req = CC.latActive
+            # Hand control back to the driver rather than fighting them. DRIVER_EPS_TORQUE is
+            # an unsigned magnitude from the column sensor, so this is a pure override test.
+            if CS.out.steeringTorque > self.params.STEER_DRIVER_ALLOWANCE:
+                apply_angle = CS.out.steeringAngleDeg
 
-        # Only send when actively controlling — avoids fighting the stock camera LKAS on bus 2
-        if self.CP.carFingerprint == CAR.BYD_ATTO3 and CC.latActive:
-            can_sends.append(bydcan.create_steering_control(
-                self.packer, apply_steer, steer_req, self.steer_idx))
-            self.steer_idx += 1
+            # Windup guard: never let the command drift outside a fixed window around the
+            # measured angle. Makes the saturation failure mode structurally impossible.
+            apply_angle = float(np.clip(apply_angle,
+                                        CS.out.steeringAngleDeg - self.params.MAX_ANGLE_ERROR,
+                                        CS.out.steeringAngleDeg + self.params.MAX_ANGLE_ERROR))
 
-        # === LONGITUDINAL CONTROL ===
-        acc_cmd = 0
+            self.apply_angle_last = apply_angle
+
+            # Always transmit, even when disengaged — the EPS expects a continuous stream, and
+            # panda checks that the inactive command tracks the measured angle.
+            can_sends.append(bydcan.create_steering_control(self.packer, apply_angle, CC.latActive,
+                                                            CS.out.standstill, self.frame // self.params.STEER_STEP))
+
+            # We own this ID now: the camera's copy is blocked from forwarding, so the cluster
+            # only sees ours. Non-LKAS fields are mirrored from the camera.
+            can_sends.append(bydcan.create_lkas_hud(self.packer, CC.latActive, CS.out.steeringPressed,
+                                                    CS.lkas_hud, self.frame // self.params.STEER_STEP))
+
+        # === LONGITUDINAL ===
         if self.CP.openpilotLongitudinalControl:
-            if CC.enabled and not pcm_cancel_cmd:
-                acc_cmd = int(round(actuators.accel * 100))
-                acc_cmd = max(-100, min(100, acc_cmd))
+            if self.frame % self.params.STEER_STEP == 0:
+                accel = float(np.clip(actuators.accel, self.params.ACCEL_MIN, self.params.ACCEL_MAX))
+                if not CC.longActive or pcm_cancel_cmd:
+                    accel = 0.0
 
-            can_sends.append(bydcan.create_acc_control(
-                self.packer, acc_cmd, CC.enabled, self.acc_idx))
-            self.acc_idx += 1
+                can_sends.append(bydcan.create_acc_control(self.packer, accel,
+                                                           CC.longActive and not pcm_cancel_cmd, self.acc_idx))
 
-        # === HUD CONTROL ===
-        # Only send LKAS_HUD_ADAS when actively engaged — camera owns this CAN ID
-        # when we're not steering; competing at 100 Hz vs camera's 50 Hz causes bus errors
-        if CC.latActive:
-            can_sends.append(bydcan.create_lkas_hud(
-                self.packer, True, hud_control.leftLaneVisible,
-                hud_control.rightLaneVisible, self.lkas_idx))
-            self.lkas_idx += 1
-
-        if self.CP.openpilotLongitudinalControl:
-            acc_hud_active = CC.enabled
-            set_speed = hud_control.setSpeed if hud_control.setSpeed > 0 else CS.out.cruiseState.speed
-            can_sends.append(bydcan.create_acc_hud(
-                self.packer, acc_hud_active, set_speed, hud_control.leadVisible, self.acc_idx))
-
-        self.apply_steer_last = apply_steer
-        self.steer_req_last = steer_req
-        self.acc_cmd_last = acc_cmd
+                set_speed = hud_control.setSpeed if hud_control.setSpeed > 0 else CS.out.cruiseState.speed
+                can_sends.append(bydcan.create_acc_hud(self.packer, CC.enabled, set_speed * 3.6,
+                                                       hud_control.leadVisible, self.acc_idx))
+                self.acc_idx += 1
 
         new_actuators = actuators.as_builder()
-        new_actuators.steeringAngleDeg = apply_steer
-        new_actuators.torqueOutputCan = apply_steer
+        new_actuators.steeringAngleDeg = self.apply_angle_last
 
+        self.frame += 1
         return new_actuators, can_sends
-
-
-def apply_driver_steer_torque_limits(apply_torque, apply_torque_last, driver_torque, params):
-    apply_torque = max(apply_torque_last - params.STEER_DELTA_DOWN,
-                       min(apply_torque_last + params.STEER_DELTA_UP, apply_torque))
-
-    if abs(driver_torque) > params.STEER_DRIVER_ALLOWANCE:
-        max_torque = max(0, params.STEER_MAX -
-                         (abs(driver_torque) - params.STEER_DRIVER_ALLOWANCE) *
-                         params.STEER_DRIVER_MULTIPLIER)
-        apply_torque = max(-max_torque, min(max_torque, apply_torque))
-    else:
-        apply_torque = max(-params.STEER_MAX, min(params.STEER_MAX, apply_torque))
-
-    return int(round(apply_torque))

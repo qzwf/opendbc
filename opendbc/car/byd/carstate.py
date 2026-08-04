@@ -1,16 +1,28 @@
 from opendbc.can.parser import CANParser
-from opendbc.car import Bus, structs
+from opendbc.car import Bus, DT_CTRL, structs
 from opendbc.car.interfaces import CarStateBase
 from opendbc.car.byd.values import DBC, BUTTONS
 
 ButtonType = structs.CarState.ButtonEvent.Type
+
+# LKAS_HUD_ADAS fields the camera owns; we mirror them into our own copy of the message
+LKAS_HUD_PASSTHROUGH = ("LSS_STATE", "SETTINGS", "SET_ME_XFF", "SET_ME_X5F",
+                        "TSR", "HMA", "PT2", "PT3", "PT4", "PT5")
+
+# ACC_HUD_ADAS arrives at 50Hz with no counter/checksum validation in the parser, and a
+# single corrupted frame used to drop cruiseState.enabled for one frame — enough to fire
+# pcmDisable and drop panda's controls_allowed. Require a few consecutive frames to drop.
+CRUISE_DROP_FRAMES = 5
 
 
 class CarState(CarStateBase):
     def __init__(self, CP):
         super().__init__(CP)
         self.button_states = {button.event_type: False for button in BUTTONS}
-        self.counter_prev = 0
+        self.lkas_hud = dict.fromkeys(LKAS_HUD_PASSTHROUGH, 0)
+        self.acc_off_frames = 0
+        self.cruise_enabled_last = False
+        self.prev_angle = 0.0
 
     def update(self, can_parsers) -> structs.CarState:
         cp = can_parsers[Bus.pt]       # bus 0: car-side chassis CAN
@@ -19,22 +31,24 @@ class CarState(CarStateBase):
 
         # --- Steering ---
         ret.steeringAngleDeg = cp.vl["STEER_MODULE_2"]["STEER_ANGLE_2"]
+        ret.steeringRateDeg = (ret.steeringAngleDeg - self.prev_angle) / DT_CTRL
+        self.prev_angle = ret.steeringAngleDeg
         # DRIVER_EPS_TORQUE (byte 2 of STEER_MODULE_2): actual column torque sensor, raw 0–255 unsigned.
-        # MAIN_TORQUE (STEERING_TORQUE 0x1FC) is total EPS motor output (100–900 Nm) — NOT driver input.
-        # Using MAIN_TORQUE caused steeringPressed=True constantly, blocking CC.latActive.
+        # MAIN_TORQUE (STEERING_TORQUE 0x1FC) is total EPS motor output — NOT driver input.
         ret.steeringTorque = cp.vl["STEER_MODULE_2"]["DRIVER_EPS_TORQUE"]
+        ret.steeringTorqueEps = cp.vl["STEERING_TORQUE"]["MAIN_TORQUE"]
         ret.steeringPressed = ret.steeringTorque > 80  # raw threshold; observed max ~52 during normal turns
 
         # --- Pedals ---
         ret.gasPressed = cp.vl["PEDAL"]["GAS_PEDAL"] > 1.0
-        ret.brake = cp.vl["PEDAL"]["BRAKE_PEDAL"] * 0.01
-        # PEDAL_PRESSED_ACTIVE_LOW: physical driver pedal contact switch (0=pressed, 1=released).
-        # Use this as primary — it does NOT fire during ACC autonomous braking.
-        # DRIVE_STATE BRAKE_PRESSED fires whenever hydraulic pressure is active (including ACC braking),
-        # causing false disengages when the car's ACC brakes for vehicles ahead without driver input.
-        ret.brakePressed = not bool(cp.vl["PEDAL_PRESSED"]["PEDAL_PRESSED_ACTIVE_LOW"])
-        if not ret.brakePressed:
-            ret.brakePressed = cp.vl["PEDAL"]["BRAKE_PEDAL"] > 0.01
+        brake_pedal = cp.vl["PEDAL"]["BRAKE_PEDAL"]  # physical, DBC factor 0.01 already applied
+        ret.brake = min(brake_pedal, 1.0)
+        # BRAKE_PEDAL is the only signal that tracks the driver's foot. Verified against a
+        # controlled pedal capture and against 3.6h of driving:
+        #   - DRIVE_STATE.BRAKE_PRESSED (DBC bit 37) is dead — byte 4 is a constant 0x0C.
+        #   - PEDAL_PRESSED_ACTIVE_LOW is the brake-light switch: 86% of its assertions on
+        #     the road happened while the camera's ACC was commanding decel, not the driver.
+        ret.brakePressed = brake_pedal > 0.03  # raw > 3, matches BYD_BRAKE_THRESHOLD in panda
 
         # --- Gear ---
         gear_map = {
@@ -62,17 +76,34 @@ class CarState(CarStateBase):
         ret.wheelSpeeds.rr = rr
         ret.vEgoRaw = (fl + fr + rl) / 3.0
         ret.vEgo, ret.aEgo = self.update_speed_kf(ret.vEgoRaw)
+        ret.standstill = ret.vEgoRaw < 0.05
 
         # --- Cruise / ACC --- (read from camera bus 2 — native source)
-        acc_on = bool(cp_cam.vl["ACC_HUD_ADAS"]["ACC_ON1"]) and bool(cp_cam.vl["ACC_HUD_ADAS"]["ACC_ON2"])
-        ret.cruiseState.enabled = acc_on
+        acc_on1 = bool(cp_cam.vl["ACC_HUD_ADAS"]["ACC_ON1"])
+        acc_on2 = bool(cp_cam.vl["ACC_HUD_ADAS"]["ACC_ON2"])
+
+        # Debounce the drop: a single corrupted frame must not disengage.
+        if acc_on1 and acc_on2:
+            self.acc_off_frames = 0
+        else:
+            self.acc_off_frames += 1
+        if self.acc_off_frames == 0:
+            self.cruise_enabled_last = True
+        elif self.acc_off_frames >= CRUISE_DROP_FRAMES:
+            self.cruise_enabled_last = False
+
+        ret.cruiseState.enabled = self.cruise_enabled_last
+        # available is the ACC main switch, not the engaged state — aliasing the two made
+        # every disengage also raise wrongCarMode and block re-engagement.
+        ret.cruiseState.available = acc_on1 or acc_on2
         # DBC SET_SPEED factor 0.5 already applied (gives km/h); convert to m/s
         ret.cruiseState.speed = cp_cam.vl["ACC_HUD_ADAS"]["SET_SPEED"] / 3.6
-        ret.cruiseState.available = acc_on
+        ret.cruiseState.standstill = False
 
-        # Camera LKAS is always active on bus 2; don't surface it as stockLkas
-        # because it would fire noEntry permanently and block all engagement
+        # We take over LKAS entirely: panda blocks the camera's steering command and we
+        # send our own, so the stock system is never a competing controller.
         ret.stockLkas = False
+        self.lkas_hud = {k: cp_cam.vl["LKAS_HUD_ADAS"][k] for k in LKAS_HUD_PASSTHROUGH}
 
         # --- Safety ---
         ret.seatbeltUnlatched = not bool(cp.vl["METER_CLUSTER"]["SEATBELT_DRIVER"])
@@ -110,7 +141,6 @@ class CarState(CarStateBase):
             ("STEER_MODULE_2", 0),
             ("STEERING_TORQUE", 0),
             ("PEDAL", 0),
-            ("PEDAL_PRESSED", 0),
             ("DRIVE_STATE", 0),
             ("WHEEL_SPEED", 0),
             ("METER_CLUSTER", 0),

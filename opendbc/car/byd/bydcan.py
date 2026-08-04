@@ -28,58 +28,59 @@ def byd_checksum(byte_key: int, dat: bytes) -> int:
     return (((first_part + (-remainder + 5)) << 4) + second_part) & 0xFF
 
 
-def create_steering_control(packer, apply_steer, steer_req, idx):
+def create_steering_control(packer, apply_angle, steer_req, standstill, idx):
     """
-    Create steering torque control message for BYD ATTO3
-    Based on STEERING_MODULE_ADAS message (482)
+    Create the steering command for BYD ATTO3 — STEERING_MODULE_ADAS (0x1E2).
+
+    STEER_ANGLE is an absolute steering wheel angle target (DBC factor 0.1 deg), so the
+    EPS servos the wheel to this position. The SET_ME_* constants are not decorative:
+    the EPS validates them and faults or ignores the command if they are wrong.
+      - SET_ME_X01 must be 1 to steer, 0 when idle.
+      - SET_ME_XE must be 0xB while driving and 0xE at standstill; 0xE while moving
+        raises the EPS fault rate and lowers the accepted angle limit at speed.
     """
 
-    # Steering request flags
-    steer_req_active = 1 if steer_req else 0
-    steer_req_active_low = 0 if steer_req else 1  # Inverted logic
-
-    # Fixed values based on DBC analysis
-    set_me_ff = 0xFF
-    set_me_f = 0xF
-    set_me_xe = 0xE
-    set_me_x01 = 0x01
-    set_me_1_1 = 1
-    set_me_1_2 = 1
+    # Only assert the fixed "armed" constants while actually requesting steering.
+    if steer_req:
+        set_me_x01 = 0x1
+        set_me_xe = 0xE if standstill else 0xB
+    else:
+        set_me_x01 = 0
+        set_me_xe = 0
 
     values = {
-        "STEER_ANGLE": apply_steer,  # degrees (DBC factor 0.1 → raw = deg × 10; panda max_torque=1000 raw = 100 deg)
-        "STEER_REQ": steer_req_active,
-        "STEER_REQ_ACTIVE_LOW": steer_req_active_low,
-        "SET_ME_FF": set_me_ff,
-        "SET_ME_F": set_me_f,
+        "STEER_ANGLE": apply_angle,  # degrees; DBC factor 0.1 → raw = deg × 10
+        "STEER_REQ": 1 if steer_req else 0,
+        "STEER_REQ_ACTIVE_LOW": 0 if steer_req else 1,
+        "SET_ME_FF": 0xFF,
+        "SET_ME_F": 0xF,
         "SET_ME_XE": set_me_xe,
         "SET_ME_X01": set_me_x01,
-        "SET_ME_1_1": set_me_1_1,
-        "SET_ME_1_2": set_me_1_2,
+        "SET_ME_1_1": 1,
+        "SET_ME_1_2": 1,
         "COUNTER": idx % 16,
-        "CHECKSUM": 0,  # Temporary, will be calculated below
+        "CHECKSUM": 0,  # placeholder, computed below
     }
 
-    # Send on bus 0 (directly to EPS on car CAN bus).
-    # panda SAFETY_BYD blocks the camera's version (bus 2) from forwarding to bus 0
-    # when controls_allowed, so only our command reaches the EPS.
+    # Sent on bus 0, straight to the EPS. panda blocks the camera's copy from being
+    # forwarded 2->0 (check_relay), so ours is the only command the EPS sees.
     msg = packer.make_can_msg("STEERING_MODULE_ADAS", CanBus.pt, values)
-
-    # Calculate and set proper BYD checksum
-    checksum = byd_checksum(CHECKSUM_KEY, msg[1])
-    values["CHECKSUM"] = checksum
+    values["CHECKSUM"] = byd_checksum(CHECKSUM_KEY, msg[1])
 
     return packer.make_can_msg("STEERING_MODULE_ADAS", CanBus.pt, values)
 
 
-def create_acc_control(packer, acc_cmd, acc_enabled, idx):
+def create_acc_control(packer, accel, acc_enabled, idx):
     """
-    Create ACC longitudinal control message
-    Based on ACC_CMD message (814)
+    Create ACC longitudinal control message — ACC_CMD (814).
+
+    NOTE: not reachable today. openpilotLongitudinalControl is False and panda leaves
+    ACC_CMD out of the TX allowlist, so this is blocked. The ACCEL_CMD scale below is
+    inferred, not measured — calibrate it on the car before enabling longitudinal.
     """
 
-    # ACC command scaling and limiting
-    accel_cmd = max(-100, min(100, acc_cmd))  # Limit to valid range
+    # ACCEL_CMD physical units are roughly m/s^2 * 16.67; the DBC applies the -100 offset
+    accel_cmd = max(-50, min(30, int(round(accel * 16.67))))
 
     # ACC control flags
     acc_on_1 = 1 if acc_enabled else 0
@@ -96,7 +97,7 @@ def create_acc_control(packer, acc_cmd, acc_enabled, idx):
     set_me_1 = 1
 
     values = {
-        "ACCEL_CMD": accel_cmd + 100,  # Offset for DBC encoding
+        "ACCEL_CMD": accel_cmd,
         "ACC_ON_1": acc_on_1,
         "ACC_ON_2": acc_on_2,
         "CMD_REQ_ACTIVE_LOW": cmd_req_active_low,
@@ -117,70 +118,51 @@ def create_acc_control(packer, acc_cmd, acc_enabled, idx):
     }
 
     # Create message with temporary checksum
-    msg = packer.make_can_msg("ACC_CMD", CanBus.cam, values)
+    msg = packer.make_can_msg("ACC_CMD", CanBus.pt, values)
 
     # Calculate and set proper BYD checksum
     checksum = byd_checksum(CHECKSUM_KEY, msg[1])
     values["CHECKSUM"] = checksum
 
-    return packer.make_can_msg("ACC_CMD", CanBus.cam, values)
+    return packer.make_can_msg("ACC_CMD", CanBus.pt, values)
 
 
-def create_lkas_hud(packer, lkas_active, left_lane, right_lane, idx):
+def create_lkas_hud(packer, lkas_active, hand_on_wheel_warning, cam, idx):
     """
-    Create LKAS HUD display message
-    Based on LKAS_HUD_ADAS message (790)
+    Create the LKAS HUD message — LKAS_HUD_ADAS (0x316), sent on bus 0 to the cluster.
+
+    Everything that isn't ours (lane-line state, traffic sign recognition, high beam
+    assist and the PT2-PT5 / SET_ME_* passthrough fields) is mirrored from the camera's
+    own copy read on bus 2. Zeroing those blanks out unrelated driver-assist icons and
+    upsets the cluster, so `cam` carries the camera's last-seen values.
     """
-
-    # LKAS active indicators (using inverted logic as per DBC)
-    steer_active_active_low = 0 if lkas_active else 1
-    steer_active_1_1 = 1 if lkas_active else 0
-    steer_active_1_2 = 1 if lkas_active else 0
-    steer_active_1_3 = 1 if lkas_active else 0
-
-    # Lane line status for HUD display
-    lss_state = 0
-    if left_lane and right_lane:
-        lss_state = 3  # Both lanes visible
-    elif left_lane:
-        lss_state = 1  # Left lane only
-    elif right_lane:
-        lss_state = 2  # Right lane only
-
-    # Fixed values from DBC
-    set_me_xff = 0xFF
-    set_me_x5f = 0x5F
-    set_me_1_2 = 1
 
     values = {
-        "STEER_ACTIVE_ACTIVE_LOW": steer_active_active_low,
-        "STEER_ACTIVE_1_1": steer_active_1_1,
-        "STEER_ACTIVE_1_2": steer_active_1_2,
-        "STEER_ACTIVE_1_3": steer_active_1_3,
-        "LSS_STATE": lss_state,
-        "SET_ME_XFF": set_me_xff,
-        "SET_ME_X5F": set_me_x5f,
-        "SET_ME_1_2": set_me_1_2,
-        "SETTINGS": idx % 16,  # Use counter for settings
-        "HAND_ON_WHEEL_WARNING": 0,  # No warning by default
-        "HMA": 0,  # High beam assist off
-        "PT2": 0,
-        "PT3": 0,
-        "PT4": 0,
-        "PT5": 0,
-        "TSR": 0,  # Traffic sign recognition
+        "STEER_ACTIVE_ACTIVE_LOW": 0 if lkas_active else 1,
+        "STEER_ACTIVE_1_1": 1 if lkas_active else 0,
+        "STEER_ACTIVE_1_2": 1 if lkas_active else 0,
+        "STEER_ACTIVE_1_3": 1 if lkas_active else 0,
+        "HAND_ON_WHEEL_WARNING": 1 if hand_on_wheel_warning else 0,
+        # camera passthrough
+        "LSS_STATE": cam["LSS_STATE"],
+        "SETTINGS": cam["SETTINGS"],
+        "SET_ME_XFF": cam["SET_ME_XFF"],
+        "SET_ME_X5F": cam["SET_ME_X5F"],
+        "TSR": cam["TSR"],
+        "HMA": cam["HMA"],
+        "PT2": cam["PT2"],
+        "PT3": cam["PT3"],
+        "PT4": cam["PT4"],
+        "PT5": cam["PT5"],
+        "SET_ME_1_2": 1,
         "COUNTER": idx % 16,
-        "CHECKSUM": 0,  # Temporary, will be calculated below
+        "CHECKSUM": 0,  # placeholder, computed below
     }
 
-    # Create message with temporary checksum
-    msg = packer.make_can_msg("LKAS_HUD_ADAS", CanBus.cam, values)
+    msg = packer.make_can_msg("LKAS_HUD_ADAS", CanBus.pt, values)
+    values["CHECKSUM"] = byd_checksum(CHECKSUM_KEY, msg[1])
 
-    # Calculate and set proper BYD checksum
-    checksum = byd_checksum(CHECKSUM_KEY, msg[1])
-    values["CHECKSUM"] = checksum
-
-    return packer.make_can_msg("LKAS_HUD_ADAS", CanBus.cam, values)
+    return packer.make_can_msg("LKAS_HUD_ADAS", CanBus.pt, values)
 
 
 def create_acc_hud(packer, acc_active, set_speed, lead_visible, idx):
@@ -216,32 +198,10 @@ def create_acc_hud(packer, acc_active, set_speed, lead_visible, idx):
     }
 
     # Create message with temporary checksum
-    msg = packer.make_can_msg("ACC_HUD_ADAS", CanBus.cam, values)
+    msg = packer.make_can_msg("ACC_HUD_ADAS", CanBus.pt, values)
 
     # Calculate and set proper BYD checksum
     checksum = byd_checksum(CHECKSUM_KEY, msg[1])
     values["CHECKSUM"] = checksum
 
-    return packer.make_can_msg("ACC_HUD_ADAS", CanBus.cam, values)
-
-
-def create_steering_torque(packer, main_torque, idx):
-    """
-    Create main steering torque message (read from vehicle)
-    Based on STEERING_TORQUE message (508) - typically read-only
-    """
-
-    values = {
-        "MAIN_TORQUE": int(main_torque * 10),  # Convert to DBC units (0.1 Nm)
-        "COUNTER": idx % 16,
-        "CHECKSUM": 0,  # Temporary, will be calculated below
-    }
-
-    # Create message with temporary checksum
-    msg = packer.make_can_msg("STEERING_TORQUE", CanBus.pt, values)
-
-    # Calculate and set proper BYD checksum
-    checksum = byd_checksum(CHECKSUM_KEY, msg[1])
-    values["CHECKSUM"] = checksum
-
-    return packer.make_can_msg("STEERING_TORQUE", CanBus.pt, values)
+    return packer.make_can_msg("ACC_HUD_ADAS", CanBus.pt, values)

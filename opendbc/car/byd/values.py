@@ -2,6 +2,7 @@ from collections import namedtuple
 from dataclasses import dataclass, field
 
 from opendbc.car import Bus, CarSpecs, PlatformConfig, Platforms, structs
+from opendbc.car.lateral import AngleSteeringLimits
 from opendbc.car.fw_query_definitions import FwQueryConfig, Request, StdQueries
 from opendbc.car.docs_definitions import CarDocs, CarParts, CarHarness, SupportType
 
@@ -19,25 +20,32 @@ def dbc_dict(pt, radar):
 
 # BYD Car Controller Parameters - tuned for ATTO3
 class CarControllerParams:
-    # STEER_ANGLE DBC signal: factor=0.1 deg → packer physical value = raw/10.
-    # BYD EPS uses absolute steering wheel angle targets (same units as STEER_ANGLE_2 sensor).
-    # Panda max_torque=1000 raw → 100 physical degrees covers urban curves up to ~50 km/h.
-    STEER_MAX = 100                   # degrees (physical); panda raw limit = 1000
-    # Rate at 100 Hz carController; CAN sent at 50 Hz (STEER_STEP=2).
-    # Per CAN msg: DELTA_UP × 2 calls = 1.0 deg = 10 raw = panda max_rate_up limit.
-    # Over 250ms (12.5 CAN msgs): 12.5 × 10 = 125 raw = panda max_rt_delta limit.
-    # Effective ramp: 50 deg/s — reaches 30° in 0.6s, 50° in 1.0s.
-    STEER_DELTA_UP = 0.5              # degrees/call → 50 deg/s ramp rate (10 raw/CAN-msg)
-    STEER_DELTA_DOWN = 1.0            # degrees/call → 100 deg/s release (20 raw/CAN-msg, panda allows 20)
+    # STEERING_MODULE_ADAS.STEER_ANGLE is an *absolute steering wheel angle* target
+    # (DBC factor 0.1 deg, same units as the STEER_ANGLE_2 sensor). The EPS is a
+    # position servo, so the command must always stay anchored to the measured angle.
+    ANGLE_LIMITS: AngleSteeringLimits = AngleSteeringLimits(
+        # The EPS faults out past ~90 deg of commanded wheel angle.
+        90.,  # deg
+        # deg of change allowed per CAN message (50 Hz). Generous at parking speeds,
+        # tightened at road speed to stay near ISO 11270 lateral accel/jerk.
+        # 2.5 deg/msg @ 50 Hz = 125 deg/s; 0.4 deg/msg = 20 deg/s.
+        ([0., 5., 25.], [2.5, 1.5, 0.4]),
+        ([0., 5., 25.], [2.5, 1.5, 0.6]),
+    )
 
-    # Driver intervention thresholds (DRIVER_EPS_TORQUE raw units, 0–255)
-    STEER_DRIVER_ALLOWANCE = 80       # observed max ~52 during normal turns; threshold for override
-    STEER_DRIVER_MULTIPLIER = 1       # reduction factor above allowance
-    STEER_DRIVER_FACTOR = 1           # additional scaling factor
-    STEER_ERROR_MAX = 350             # not actively used but raised to avoid spurious faults
+    # Hard windup guard: the command may never sit further than this from the measured
+    # angle. This is what makes a ratcheting/saturating limiter structurally impossible.
+    MAX_ANGLE_ERROR = 12.             # deg
 
-    # Control timing - 50Hz update rate
+    # Driver override threshold on DRIVER_EPS_TORQUE (column sensor, raw 0-255).
+    # Observed max ~52 during normal driver turns.
+    STEER_DRIVER_ALLOWANCE = 80
+
+    # Control timing - CAN messages sent at 50Hz (controller runs at 100Hz)
     STEER_STEP = 2
+
+    ACCEL_MAX = 2.0                   # m/s^2
+    ACCEL_MIN = -3.5                  # m/s^2
 
     def __init__(self, CP):
         pass
