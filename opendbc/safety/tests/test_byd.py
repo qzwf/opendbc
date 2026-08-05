@@ -24,9 +24,10 @@ def sign(msg):
 
 
 class TestBydSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
-  TX_MSGS = [[STEERING_MODULE_ADAS, MAIN_BUS], [LKAS_HUD_ADAS, MAIN_BUS]]
-  RELAY_MALFUNCTION_ADDRS = {MAIN_BUS: (STEERING_MODULE_ADAS, LKAS_HUD_ADAS)}
-  FWD_BLACKLISTED_ADDRS = {CAM_BUS: [STEERING_MODULE_ADAS, LKAS_HUD_ADAS]}
+  TX_MSGS = [[STEERING_MODULE_ADAS, MAIN_BUS]]
+  RELAY_MALFUNCTION_ADDRS = {MAIN_BUS: (STEERING_MODULE_ADAS,)}
+  # nothing is statically blocked: the camera keeps the EPS until openpilot transmits
+  FWD_BLACKLISTED_ADDRS = {}
   FWD_BUS_LOOKUP = {0: 2, 2: 0}
 
   STEER_ANGLE_MAX = 90
@@ -45,8 +46,8 @@ class TestBydSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
     self.safety.init_tests()
 
   def _angle_cmd_msg(self, angle: float, enabled: bool):
-    values = {"STEER_ANGLE": angle, "STEER_REQ": enabled, "STEER_REQ_ACTIVE_LOW": not enabled,
-              "SET_ME_X01": 1 if enabled else 0, "SET_ME_XE": 0xB if enabled else 0}
+    # STEER_REQ_ACTIVE_LOW is not the inverse of STEER_REQ on this car; the camera holds it at 0
+    values = {"STEER_ANGLE": angle, "STEER_REQ": enabled, "STEER_REQ_ACTIVE_LOW": 0}
     return self.packer.make_can_msg_safety("STEERING_MODULE_ADAS", MAIN_BUS, values)
 
   def _angle_meas_msg(self, angle: float):
@@ -74,13 +75,26 @@ class TestBydSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
     values = {"GAS_PEDAL": gas}
     return sign(self.packer.make_can_msg_safety("PEDAL", MAIN_BUS, values))
 
-  def test_steer_req_bit_mismatch(self):
-    """STEER_REQ and its active-low twin must always disagree."""
+  def test_camera_keeps_eps_until_we_transmit(self):
+    """The camera's steering command forwards normally, and is blocked only while
+    openpilot is actually sending its own — so the EPS never has two masters or none."""
+    self.assertEqual(0, self.safety.safety_fwd_hook(CAM_BUS, STEERING_MODULE_ADAS))
+
     self.safety.set_controls_allowed(True)
-    for req, active_low in ((1, 1), (0, 0)):
-      values = {"STEER_ANGLE": 0, "STEER_REQ": req, "STEER_REQ_ACTIVE_LOW": active_low}
-      msg = self.packer.make_can_msg_safety("STEERING_MODULE_ADAS", MAIN_BUS, values)
-      self.assertFalse(self._tx(msg))
+    self._reset_angle_measurement(0)
+    self._reset_speed_measurement(10)
+    self.assertTrue(self._tx(self._angle_cmd_msg(0, True)))
+    self.assertEqual(-1, self.safety.safety_fwd_hook(CAM_BUS, STEERING_MODULE_ADAS))
+
+    # after openpilot goes quiet the camera gets the wheel back
+    self.safety.set_timer(int(0.2 * 1e6))
+    self.assertEqual(0, self.safety.safety_fwd_hook(CAM_BUS, STEERING_MODULE_ADAS))
+
+  def test_blocked_tx_does_not_steal_the_wheel(self):
+    """A rejected command must not block the camera — that would leave nobody steering."""
+    self.safety.set_controls_allowed(False)
+    self.assertFalse(self._tx(self._angle_cmd_msg(30, True)))
+    self.assertEqual(0, self.safety.safety_fwd_hook(CAM_BUS, STEERING_MODULE_ADAS))
 
   def test_checksum_rejects_corrupt_frames(self):
     """A frame whose checksum doesn't match must invalidate rx and drop controls."""
@@ -94,6 +108,23 @@ class TestBydSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
 
 
 class TestBydSafety(TestBydSafetyBase):
+  def test_reproduces_real_camera_frames(self):
+    """Our steering frame must be byte-identical to the camera's apart from the angle.
+    These payloads were captured from the car's own CAN bus."""
+    from opendbc.can.packer import CANPacker
+    from opendbc.car.byd import bydcan
+    from opendbc.car.byd.carstate import unpack_steer_seq
+
+    pk = CANPacker("byd_general")
+    for hexs, angle, cnt in (("2b 55 eb ff ff ff 0f 88", -0.1, 0),
+                             ("2b 55 eb fe ff ff ff 99", -0.2, 15),
+                             ("3b e4 ee c0 ff ff 3f f5", -6.4, 3),
+                             ("33 c4 ee b6 ff ff 8f d7", -7.4, 8)):
+      want = bytes.fromhex(hexs.replace(" ", ""))
+      seq = ((want[2] & 0xF) << 16) | (want[1] << 8) | want[0]
+      _, got, _ = bydcan.create_steering_control(pk, angle, unpack_steer_seq(seq), cnt)
+      self.assertEqual(want, got, f"expected {want.hex(' ')} got {got.hex(' ')}")
+
   def test_acc_cmd_not_allowed(self):
     """Longitudinal is stock-only; ACC_CMD must never be transmitted."""
     self.safety.set_controls_allowed(True)

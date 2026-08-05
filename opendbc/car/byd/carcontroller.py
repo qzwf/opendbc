@@ -4,6 +4,7 @@ from opendbc.can.packer import CANPacker
 from opendbc.car import Bus
 from opendbc.car.byd.values import CarControllerParams
 from opendbc.car.byd import bydcan
+from opendbc.car.byd.carstate import STEER_SEQ_MASK, unpack_steer_seq
 from opendbc.car.lateral import apply_std_steer_angle_limits
 from opendbc.car.interfaces import CarControllerBase
 
@@ -17,6 +18,8 @@ class CarController(CarControllerBase):
 
         self.apply_angle_last = 0.0
         self.acc_idx = 0
+        self.steer_seq = 0
+        self.lat_active_last = False
 
     def update(self, CC, CS, now_nanos):
         actuators = CC.actuators
@@ -48,15 +51,22 @@ class CarController(CarControllerBase):
 
             self.apply_angle_last = apply_angle
 
-            # Always transmit, even when disengaged — the EPS expects a continuous stream, and
-            # panda checks that the inactive command tracks the measured angle.
-            can_sends.append(bydcan.create_steering_control(self.packer, apply_angle, CC.latActive,
-                                                            CS.out.standstill, self.frame // self.params.STEER_STEP))
+            # Transmit only while actually steering. Whenever we go quiet, panda stops
+            # blocking the camera's command after ~150ms and the stock LKAS takes the wheel
+            # back — so there is never a window with nobody driving the EPS. It also lets the
+            # camera keep refreshing the frame template we copy.
+            if CC.latActive:
+                # Latch the camera's sequence on engage, then keep advancing it at the camera's
+                # own rate so the stream the EPS sees carries on unbroken from the camera's.
+                if not self.lat_active_last:
+                    self.steer_seq = CS.steer_seq
+                else:
+                    self.steer_seq = (self.steer_seq + CS.steer_seq_step) & STEER_SEQ_MASK
 
-            # We own this ID now: the camera's copy is blocked from forwarding, so the cluster
-            # only sees ours. Non-LKAS fields are mirrored from the camera.
-            can_sends.append(bydcan.create_lkas_hud(self.packer, CC.latActive, CS.out.steeringPressed,
-                                                    CS.lkas_hud, self.frame // self.params.STEER_STEP))
+                can_sends.append(bydcan.create_steering_control(self.packer, apply_angle,
+                                                                unpack_steer_seq(self.steer_seq),
+                                                                self.frame // self.params.STEER_STEP))
+            self.lat_active_last = CC.latActive
 
         # === LONGITUDINAL ===
         if self.CP.openpilotLongitudinalControl:

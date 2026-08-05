@@ -28,34 +28,30 @@ def byd_checksum(byte_key: int, dat: bytes) -> int:
     return (((first_part + (-remainder + 5)) << 4) + second_part) & 0xFF
 
 
-def create_steering_control(packer, apply_angle, steer_req, standstill, idx):
+def create_steering_control(packer, apply_angle, template, idx):
     """
     Create the steering command for BYD ATTO3 — STEERING_MODULE_ADAS (0x1E2).
 
-    STEER_ANGLE is an absolute steering wheel angle target (DBC factor 0.1 deg), so the
-    EPS servos the wheel to this position. The SET_ME_* constants are not decorative:
-    the EPS validates them and faults or ignores the command if they are wrong.
-      - SET_ME_X01 must be 1 to steer, 0 when idle.
-      - SET_ME_XE must be 0xB while driving and 0xE at standstill; 0xE while moving
-        raises the EPS fault rate and lowers the accepted angle limit at speed.
-    """
+    STEER_ANGLE is an absolute steering wheel angle target (DBC factor 0.1 deg); the EPS
+    servos the wheel to that position. Every other field is copied from `template`, the
+    camera's own most recent steering frame, because the EPS validates fields we do not
+    understand (the DBC's 14-bit UNKNOWN and SET_ME_XE) and silently ignores the command
+    when they are wrong. Producing a byte-identical frame sidesteps having to decode them.
 
-    # Only assert the fixed "armed" constants while actually requesting steering.
-    if steer_req:
-        set_me_x01 = 0x1
-        set_me_xe = 0xE if standstill else 0xB
-    else:
-        set_me_x01 = 0
-        set_me_xe = 0
+    Note STEER_REQ_ACTIVE_LOW is *not* the inverse of STEER_REQ despite its name — the
+    camera holds it at 0 in both states.
+    """
 
     values = {
         "STEER_ANGLE": apply_angle,  # degrees; DBC factor 0.1 → raw = deg × 10
-        "STEER_REQ": 1 if steer_req else 0,
-        "STEER_REQ_ACTIVE_LOW": 0 if steer_req else 1,
+        "STEER_REQ": 1,
+        "STEER_REQ_ACTIVE_LOW": 0,
+        # UNKNOWN / SET_ME_X01 / SET_ME_XE are one 20-bit sequence continued from the camera
+        "UNKNOWN": template["UNKNOWN"],
+        "SET_ME_X01": template["SET_ME_X01"],
+        "SET_ME_XE": template["SET_ME_XE"],
         "SET_ME_FF": 0xFF,
         "SET_ME_F": 0xF,
-        "SET_ME_XE": set_me_xe,
-        "SET_ME_X01": set_me_x01,
         "SET_ME_1_1": 1,
         "SET_ME_1_2": 1,
         "COUNTER": idx % 16,
@@ -63,7 +59,7 @@ def create_steering_control(packer, apply_angle, steer_req, standstill, idx):
     }
 
     # Sent on bus 0, straight to the EPS. panda blocks the camera's copy from being
-    # forwarded 2->0 (check_relay), so ours is the only command the EPS sees.
+    # forwarded 2->0 for as long as we keep transmitting, so the EPS sees one source.
     msg = packer.make_can_msg("STEERING_MODULE_ADAS", CanBus.pt, values)
     values["CHECKSUM"] = byd_checksum(CHECKSUM_KEY, msg[1])
 
@@ -127,43 +123,9 @@ def create_acc_control(packer, accel, acc_enabled, idx):
     return packer.make_can_msg("ACC_CMD", CanBus.pt, values)
 
 
-def create_lkas_hud(packer, lkas_active, hand_on_wheel_warning, cam, idx):
-    """
-    Create the LKAS HUD message — LKAS_HUD_ADAS (0x316), sent on bus 0 to the cluster.
-
-    Everything that isn't ours (lane-line state, traffic sign recognition, high beam
-    assist and the PT2-PT5 / SET_ME_* passthrough fields) is mirrored from the camera's
-    own copy read on bus 2. Zeroing those blanks out unrelated driver-assist icons and
-    upsets the cluster, so `cam` carries the camera's last-seen values.
-    """
-
-    values = {
-        "STEER_ACTIVE_ACTIVE_LOW": 0 if lkas_active else 1,
-        "STEER_ACTIVE_1_1": 1 if lkas_active else 0,
-        "STEER_ACTIVE_1_2": 1 if lkas_active else 0,
-        "STEER_ACTIVE_1_3": 1 if lkas_active else 0,
-        "HAND_ON_WHEEL_WARNING": 1 if hand_on_wheel_warning else 0,
-        # camera passthrough
-        "LSS_STATE": cam["LSS_STATE"],
-        "SETTINGS": cam["SETTINGS"],
-        "SET_ME_XFF": cam["SET_ME_XFF"],
-        "SET_ME_X5F": cam["SET_ME_X5F"],
-        "TSR": cam["TSR"],
-        "HMA": cam["HMA"],
-        "PT2": cam["PT2"],
-        "PT3": cam["PT3"],
-        "PT4": cam["PT4"],
-        "PT5": cam["PT5"],
-        "SET_ME_1_2": 1,
-        "COUNTER": idx % 16,
-        "CHECKSUM": 0,  # placeholder, computed below
-    }
-
-    msg = packer.make_can_msg("LKAS_HUD_ADAS", CanBus.pt, values)
-    values["CHECKSUM"] = byd_checksum(CHECKSUM_KEY, msg[1])
-
-    return packer.make_can_msg("LKAS_HUD_ADAS", CanBus.pt, values)
-
+# The LKAS HUD (0x316) is deliberately left to the camera. It is cosmetic, the camera's
+# copy is always correct, and overriding it made the cluster show LKAS engaged at all
+# times because *_ACTIVE_LOW is not the inverse of the active bit.
 
 def create_acc_hud(packer, acc_active, set_speed, lead_visible, idx):
     """

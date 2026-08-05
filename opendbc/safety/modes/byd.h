@@ -1,9 +1,11 @@
 // BYD ATTO3 Safety Implementation
 //
 // Bus layout: 0 = car chassis CAN, 1 = camera/radar private CAN, 2 = camera ADAS CAN.
-// openpilot owns STEERING_MODULE_ADAS and LKAS_HUD_ADAS on bus 0. Both are declared
-// check_relay, so panda statically blocks the camera's copies from being forwarded
-// 2 -> 0 and detects a stuck relay. Every other camera message forwards untouched.
+// openpilot transmits STEERING_MODULE_ADAS on bus 0 only while it is actively steering.
+// The camera's copy is forwarded 2 -> 0 normally, so the stock LKAS keeps the wheel
+// whenever openpilot is quiet; it is blocked only while openpilot is transmitting, so
+// the EPS never sees two sources at once and there is never a gap with neither.
+// LKAS_HUD_ADAS is left entirely to the camera.
 //
 // STEERING_MODULE_ADAS.STEER_ANGLE is an absolute steering wheel angle target, so this
 // mode uses the angle checks (speed-dependent rate limits + inactive-angle tracking),
@@ -30,6 +32,13 @@
 // DRIVE_STATE.BRAKE_PRESSED is dead on this platform (constant 0) and
 // PEDAL_PRESSED_ACTIVE_LOW is the brake-light switch, which ACC also asserts.
 #define BYD_BRAKE_THRESHOLD 3U
+
+// How long the camera's steering command stays blocked after openpilot sends one. Longer
+// than a few missed frames at 50Hz, short enough to hand back promptly on disengage.
+#define BYD_STEER_TAKEOVER_TIMEOUT 150000U  // us
+
+static bool byd_steering = false;      // openpilot currently owns the EPS
+static uint32_t byd_last_steer_tx = 0U;
 
 // BYD's checksum: nibble sums of every byte but the last, folded with a fixed key.
 static uint32_t byd_compute_checksum(const CANPacket_t *msg) {
@@ -72,9 +81,10 @@ static uint8_t byd_get_counter(const CANPacket_t *msg) {
 static safety_config byd_init(uint16_t param) {
   // openpilot transmits both of these on bus 0. check_relay makes panda block the
   // camera's copies from forwarding 2 -> 0 and flags a stuck relay.
+  // check_relay keeps stuck-relay detection, but static blocking is disabled so
+  // byd_fwd_hook can decide per-frame whether the camera still owns the EPS.
   static const CanMsg BYD_TX_MSGS[] = {
-    {(int)BYD_STEERING_MODULE_ADAS, 0, 8, .check_relay = true},
-    {(int)BYD_LKAS_HUD_ADAS,        0, 8, .check_relay = true},
+    {(int)BYD_STEERING_MODULE_ADAS, 0, 8, .check_relay = true, .disable_static_blocking = true},
   };
 
   // STEER_MODULE_2, WHEEL_SPEED and DRIVE_STATE carry no checksum or counter in the DBC.
@@ -90,6 +100,8 @@ static safety_config byd_init(uint16_t param) {
   // Longitudinal is stock-only: ACC_CMD is deliberately absent from the TX allowlist, so
   // panda blocks it outright. Enabling it needs the ACCEL_CMD scaling calibrated on the car.
   SAFETY_UNUSED(param);
+  byd_steering = false;
+  byd_last_steer_tx = 0U;
 
   safety_config ret;
   SET_TX_MSGS(BYD_TX_MSGS, ret);
@@ -171,22 +183,35 @@ static bool byd_tx_hook(const CANPacket_t *msg) {
       if (steer_angle_cmd_checks(desired_angle, steer_control_enabled, BYD_ANGLE_STEERING_LIMITS)) {
         tx = false;
       }
-
-      // STEER_REQ and its active-low twin (bit 20) must always disagree
-      if (steer_control_enabled == GET_BIT(msg, 20U)) {
-        tx = false;
-      }
     }
 
   }
 
+  if (tx && (msg->bus == 0U) && (msg->addr == BYD_STEERING_MODULE_ADAS)) {
+    byd_steering = true;
+    byd_last_steer_tx = microsecond_timer_get();
+  }
+
   return tx;
+}
+
+// Hand the EPS back to the camera whenever openpilot stops transmitting.
+static bool byd_fwd_hook(int bus_num, int addr) {
+  bool blocked = false;
+  if ((bus_num == 2) && ((uint32_t)addr == BYD_STEERING_MODULE_ADAS)) {
+    if (byd_steering && (safety_get_ts_elapsed(microsecond_timer_get(), byd_last_steer_tx) >= BYD_STEER_TAKEOVER_TIMEOUT)) {
+      byd_steering = false;
+    }
+    blocked = byd_steering;
+  }
+  return blocked;
 }
 
 const safety_hooks byd_hooks = {
   .init = byd_init,
   .rx = byd_rx_hook,
   .tx = byd_tx_hook,
+  .fwd = byd_fwd_hook,
   .get_checksum = byd_get_checksum,
   .compute_checksum = byd_compute_checksum,
   .get_counter = byd_get_counter,

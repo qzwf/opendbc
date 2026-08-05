@@ -9,10 +9,34 @@ ButtonType = structs.CarState.ButtonEvent.Type
 LKAS_HUD_PASSTHROUGH = ("LSS_STATE", "SETTINGS", "SET_ME_XFF", "SET_ME_X5F",
                         "TSR", "HMA", "PT2", "PT3", "PT4", "PT5")
 
+# Bytes 0-1 and SET_ME_XE of STEERING_MODULE_ADAS are not three independent fields: they
+# form one 20-bit sequence, (SET_ME_XE << 16) | (byte1 << 8) | byte0, which the camera
+# advances by a fixed increment on every frame of a steering episode (measured: +1025/frame
+# at 115 km/h, +25575/frame in city driving). It is zero while the camera is idle. We can
+# neither derive the value nor the increment, and the EPS ignores commands where they look
+# wrong, so we latch the camera's sequence and keep advancing it ourselves while we steer.
+STEER_SEQ_BITS = 20
+STEER_SEQ_MASK = (1 << STEER_SEQ_BITS) - 1
+
 # ACC_HUD_ADAS arrives at 50Hz with no counter/checksum validation in the parser, and a
 # single corrupted frame used to drop cruiseState.enabled for one frame — enough to fire
 # pcmDisable and drop panda's controls_allowed. Require a few consecutive frames to drop.
 CRUISE_DROP_FRAMES = 5
+
+
+def pack_steer_seq(unknown: int, set_me_x01: int, set_me_xe: int) -> int:
+    """Fold the three decoded DBC fields back into the single 20-bit sequence value."""
+    byte0 = (unknown >> 6) & 0xFF
+    byte1 = ((unknown & 0x3F) << 2) | (set_me_x01 & 0x3)
+    return ((set_me_xe & 0xF) << 16) | (byte1 << 8) | byte0
+
+
+def unpack_steer_seq(seq: int) -> dict:
+    """Split the 20-bit sequence back into the DBC field values the packer expects."""
+    byte0, byte1 = seq & 0xFF, (seq >> 8) & 0xFF
+    return {"UNKNOWN": (byte0 << 6) | (byte1 >> 2),
+            "SET_ME_X01": byte1 & 0x3,
+            "SET_ME_XE": (seq >> 16) & 0xF}
 
 
 class CarState(CarStateBase):
@@ -20,6 +44,10 @@ class CarState(CarStateBase):
         super().__init__(CP)
         self.button_states = {button.event_type: False for button in BUTTONS}
         self.lkas_hud = dict.fromkeys(LKAS_HUD_PASSTHROUGH, 0)
+        self.steer_seq = 0          # camera's 20-bit steering sequence value
+        self.steer_seq_step = 0     # its per-frame increment
+        self._seq_prev = None
+        self.camera_has_steered = False
         self.acc_off_frames = 0
         self.cruise_enabled_last = False
         self.prev_angle = 0.0
@@ -105,6 +133,20 @@ class CarState(CarStateBase):
         ret.stockLkas = False
         self.lkas_hud = {k: cp_cam.vl["LKAS_HUD_ADAS"][k] for k in LKAS_HUD_PASSTHROUGH}
 
+        # Track the camera's steering sequence while it is the one driving the EPS
+        cam_steer = cp_cam.vl["STEERING_MODULE_ADAS"]
+        if cam_steer["STEER_REQ"]:
+            seq = pack_steer_seq(int(cam_steer["UNKNOWN"]), int(cam_steer["SET_ME_X01"]),
+                                 int(cam_steer["SET_ME_XE"]))
+            if seq:
+                if self._seq_prev is not None and seq != self._seq_prev:
+                    self.steer_seq_step = (seq - self._seq_prev) & STEER_SEQ_MASK
+                self._seq_prev = seq
+                self.steer_seq = seq
+                self.camera_has_steered = True
+        else:
+            self._seq_prev = None
+
         # --- Safety ---
         ret.seatbeltUnlatched = not bool(cp.vl["METER_CLUSTER"]["SEATBELT_DRIVER"])
         ret.doorOpen = any([
@@ -151,6 +193,7 @@ class CarState(CarStateBase):
         cam_messages = [
             ("ACC_HUD_ADAS", 0),
             ("LKAS_HUD_ADAS", 0),
+            ("STEERING_MODULE_ADAS", 0),
         ]
         return {
             Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, 0),
