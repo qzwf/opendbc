@@ -25,7 +25,11 @@ class CarInterface(CarInterfaceBase):
 
         # BYD EPS receives absolute steering wheel angle targets in STEERING_MODULE_ADAS.
         ret.steerControlType = structs.CarParams.SteerControlType.angle
-        ret.steerActuatorDelay = 0.1
+        # Measured on the car (2026-08-07 drive, cross-correlating the transmitted 0x1E2
+        # angle against the 0x11F measured angle): the EPS follows with ~0.3-0.8 s of lag.
+        # A higher value makes the planner start turning earlier into curves, which reduces
+        # curve-entry steerSaturated events on this torque-limited EPS.
+        ret.steerActuatorDelay = 0.35
         ret.steerLimitTimer = 0.4
 
         ret.longitudinalTuning.kpBP = [0., 35.]

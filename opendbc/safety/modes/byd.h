@@ -23,7 +23,8 @@
 #define BYD_DRIVE_STATE          0x242U  // 578  - GEAR, bus 0
 #define BYD_STEERING_MODULE_ADAS 0x1E2U  // 482  - LKAS steering command
 #define BYD_LKAS_HUD_ADAS        0x316U  // 790  - LKAS HUD
-#define BYD_ACC_HUD_ADAS         0x32DU  // 813  - ACC status (ACC_ON1/ON2), camera on bus 2
+#define BYD_ACC_HUD_ADAS         0x32DU  // 813  - ACC main/standby state, camera on bus 2
+#define BYD_ACC_CMD              0x32EU  // 814  - ACC command; CMD_REQ_ACTIVE_LOW is the real engaged flag
 
 // STEER_ANGLE has DBC factor 0.1 deg, so 1 physical degree is 10 raw units.
 #define BYD_DEG_TO_CAN 10.0f
@@ -70,7 +71,7 @@ static uint32_t byd_get_checksum(const CANPacket_t *msg) {
 
 static uint8_t byd_get_counter(const CANPacket_t *msg) {
   uint8_t cnt = 0U;
-  if (msg->addr == BYD_ACC_HUD_ADAS) {
+  if ((msg->addr == BYD_ACC_HUD_ADAS) || (msg->addr == BYD_ACC_CMD)) {
     cnt = msg->data[6] & 0xFU;          // COUNTER : 48|4@1+
   } else {
     cnt = (uint8_t)(msg->data[6] >> 4); // COUNTER : 55|4@0+
@@ -94,7 +95,7 @@ static safety_config byd_init(uint16_t param) {
     {.msg = {{(int)BYD_WHEEL_SPEED,     0, 8,  50U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, {0}, {0}}},
     {.msg = {{(int)BYD_PEDAL,           0, 8,  50U, .max_counter = 15U, .ignore_quality_flag = true}, {0}, {0}}},
     {.msg = {{(int)BYD_DRIVE_STATE,     0, 8,  50U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, {0}, {0}}},
-    {.msg = {{(int)BYD_ACC_HUD_ADAS,    2, 8,  50U, .max_counter = 15U, .ignore_quality_flag = true}, {0}, {0}}},
+    {.msg = {{(int)BYD_ACC_CMD,         2, 8,  50U, .max_counter = 15U, .ignore_quality_flag = true}, {0}, {0}}},
   };
 
   // Longitudinal is stock-only: ACC_CMD is deliberately absent from the TX allowlist, so
@@ -142,10 +143,12 @@ static void byd_rx_hook(const CANPacket_t *msg) {
     }
   }
 
-  // ACC engagement — sets controls_allowed on the rising edge of ACC being on.
-  // ACC_ON1 : 22|1@0+, ACC_ON2 : 20|1@0+ (1-bit Motorola, DBC bit == Intel bit)
-  if ((msg->bus == 2U) && (addr == BYD_ACC_HUD_ADAS)) {
-    bool cruise_engaged = GET_BIT(msg, 22U) && GET_BIT(msg, 20U);
+  // ACC engagement — sets controls_allowed on the rising edge of the stock ACC actively
+  // commanding. ACC_HUD_ADAS.ACC_ON1/ON2 are only the main-switch/standby state (they stay
+  // set while the driver brakes and drives manually); the real engaged flag is in ACC_CMD:
+  // ACC_ON_1 : 9|1@0+, ACC_ON_2 : 17|1@0+, CMD_REQ_ACTIVE_LOW : 36|1@0+ (low = commanding).
+  if ((msg->bus == 2U) && (addr == BYD_ACC_CMD)) {
+    bool cruise_engaged = GET_BIT(msg, 9U) && GET_BIT(msg, 17U) && !GET_BIT(msg, 36U);
     pcm_cruise_check(cruise_engaged);
   }
 }

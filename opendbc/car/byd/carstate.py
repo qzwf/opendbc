@@ -18,8 +18,8 @@ LKAS_HUD_PASSTHROUGH = ("LSS_STATE", "SETTINGS", "SET_ME_XFF", "SET_ME_X5F",
 STEER_SEQ_BITS = 20
 STEER_SEQ_MASK = (1 << STEER_SEQ_BITS) - 1
 
-# ACC_HUD_ADAS arrives at 50Hz with no counter/checksum validation in the parser, and a
-# single corrupted frame used to drop cruiseState.enabled for one frame — enough to fire
+# ACC_CMD arrives at 50Hz with no counter/checksum validation in the parser, and a
+# single corrupted frame must not drop cruiseState.enabled for one frame — enough to fire
 # pcmDisable and drop panda's controls_allowed. Require a few consecutive frames to drop.
 CRUISE_DROP_FRAMES = 5
 
@@ -107,11 +107,18 @@ class CarState(CarStateBase):
         ret.standstill = ret.vEgoRaw < 0.05
 
         # --- Cruise / ACC --- (read from camera bus 2 — native source)
-        acc_on1 = bool(cp_cam.vl["ACC_HUD_ADAS"]["ACC_ON1"])
-        acc_on2 = bool(cp_cam.vl["ACC_HUD_ADAS"]["ACC_ON2"])
+        # ACC_HUD_ADAS.ACC_ON1/ACC_ON2 are the ACC *main switch / standby* state, NOT
+        # engagement. Proven on the 2026-08-07 drive: 25 min of stop-and-go with the driver
+        # braking 28% of the time and both bits set throughout. The real engaged flag is in
+        # ACC_CMD: CMD_REQ_ACTIVE_LOW == 0 (with ACC_ON_1/2 set) only while the stock ACC is
+        # actively commanding. Using standby as "enabled" trapped openpilot after every brake
+        # tap: cruiseState.enabled never dropped, so pcmEnable never saw a rising edge again.
+        acc_main = bool(cp_cam.vl["ACC_HUD_ADAS"]["ACC_ON1"]) or bool(cp_cam.vl["ACC_HUD_ADAS"]["ACC_ON2"])
+        acc_engaged = (bool(cp_cam.vl["ACC_CMD"]["ACC_ON_1"]) and bool(cp_cam.vl["ACC_CMD"]["ACC_ON_2"])
+                       and not bool(cp_cam.vl["ACC_CMD"]["CMD_REQ_ACTIVE_LOW"]))
 
         # Debounce the drop: a single corrupted frame must not disengage.
-        if acc_on1 and acc_on2:
+        if acc_engaged:
             self.acc_off_frames = 0
         else:
             self.acc_off_frames += 1
@@ -123,7 +130,7 @@ class CarState(CarStateBase):
         ret.cruiseState.enabled = self.cruise_enabled_last
         # available is the ACC main switch, not the engaged state — aliasing the two made
         # every disengage also raise wrongCarMode and block re-engagement.
-        ret.cruiseState.available = acc_on1 or acc_on2
+        ret.cruiseState.available = acc_main
         # DBC SET_SPEED factor 0.5 already applied (gives km/h); convert to m/s
         ret.cruiseState.speed = cp_cam.vl["ACC_HUD_ADAS"]["SET_SPEED"] / 3.6
         ret.cruiseState.standstill = False
@@ -192,6 +199,7 @@ class CarState(CarStateBase):
         # Bus 2: messages sent by the ADAS camera module
         cam_messages = [
             ("ACC_HUD_ADAS", 0),
+            ("ACC_CMD", 0),
             ("LKAS_HUD_ADAS", 0),
             ("STEERING_MODULE_ADAS", 0),
         ]

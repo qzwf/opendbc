@@ -55,8 +55,10 @@ class TestBydSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
     return self.packer.make_can_msg_safety("STEER_MODULE_2", MAIN_BUS, values)
 
   def _pcm_status_msg(self, enable):
-    values = {"ACC_ON1": enable, "ACC_ON2": enable}
-    return sign(self.packer.make_can_msg_safety("ACC_HUD_ADAS", CAM_BUS, values))
+    # ACC_HUD_ADAS.ACC_ON1/ON2 are only the main-switch/standby state; the engaged flag
+    # panda watches is in ACC_CMD (CMD_REQ_ACTIVE_LOW = 0 while the stock ACC commands)
+    values = {"ACC_ON_1": enable, "ACC_ON_2": enable, "CMD_REQ_ACTIVE_LOW": 0 if enable else 1}
+    return sign(self.packer.make_can_msg_safety("ACC_CMD", CAM_BUS, values))
 
   def _speed_msg(self, speed):
     # carstate applies a 40/53 correction to the raw DBC value; mirror it here
