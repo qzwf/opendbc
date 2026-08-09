@@ -63,8 +63,20 @@ class CarController(CarControllerBase):
                 else:
                     self.steer_seq = (self.steer_seq + CS.steer_seq_step) & STEER_SEQ_MASK
 
+                if self.steer_seq:
+                    template = unpack_steer_seq(self.steer_seq)
+                else:
+                    # The camera has not steered since boot (blocked lens, LKAS never engaged),
+                    # so there is no sequence to continue — and all-zero bytes make the EPS
+                    # ignore the command. Fall back to the static frame bukapilot shipped for
+                    # this exact car: SET_ME_X01 "must be 0x1 to steer"; SET_ME_XE 0xB while
+                    # moving ("faults less, highest angle limit at high speed"), 0xE at
+                    # standstill. The camera's own frames use the same 0xB/0xE nibble.
+                    template = {"UNKNOWN": 0, "SET_ME_X01": 0x1,
+                                "SET_ME_XE": 0xE if CS.out.standstill else 0xB}
+
                 can_sends.append(bydcan.create_steering_control(self.packer, apply_angle,
-                                                                unpack_steer_seq(self.steer_seq),
+                                                                template,
                                                                 self.frame // self.params.STEER_STEP))
             self.lat_active_last = CC.latActive
 

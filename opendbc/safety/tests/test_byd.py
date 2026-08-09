@@ -127,6 +127,23 @@ class TestBydSafety(TestBydSafetyBase):
       _, got, _ = bydcan.create_steering_control(pk, angle, unpack_steer_seq(seq), cnt)
       self.assertEqual(want, got, f"expected {want.hex(' ')} got {got.hex(' ')}")
 
+  def test_fallback_template_when_camera_never_steered(self):
+    """With no camera sequence to continue, the controller sends bukapilot's static frame:
+    UNKNOWN=0, SET_ME_X01=1, SET_ME_XE=0xB (0xE at standstill). All-zero bytes would make
+    the EPS silently ignore the command."""
+    from opendbc.can.packer import CANPacker
+    from opendbc.car.byd import bydcan
+
+    pk = CANPacker("byd_general")
+    for standstill, xe in ((False, 0xB), (True, 0xE)):
+      template = {"UNKNOWN": 0, "SET_ME_X01": 0x1, "SET_ME_XE": 0xE if standstill else 0xB}
+      _, dat, _ = bydcan.create_steering_control(pk, 0.0, template, 0)
+      self.assertEqual(0x00, dat[0])              # UNKNOWN high byte
+      self.assertEqual(0x01, dat[1])              # SET_ME_X01 in byte 1 low bits
+      self.assertEqual(xe, dat[2] & 0xF)          # SET_ME_XE nibble
+      self.assertTrue((dat[2] >> 5) & 1)          # STEER_REQ set
+      self.assertEqual(dat[7], byd_checksum(CHECKSUM_KEY, dat[:-1]))
+
   def test_acc_cmd_not_allowed(self):
     """Longitudinal is stock-only; ACC_CMD must never be transmitted."""
     self.safety.set_controls_allowed(True)
