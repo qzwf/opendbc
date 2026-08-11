@@ -90,6 +90,14 @@ class CanBus:
     radar = 1   # Private CAN (camera image/radar data)
 
 
+# Every LKAS_HUD_ADAS field except the STEER_ACTIVE bits and the counter/checksum. openpilot
+# only owns whether LKAS is shown as active; lane-line state, traffic sign recognition, high
+# beam assist and the PT2-PT5 / SET_ME_* fields belong to the camera and blank out unrelated
+# driver-assist icons if we zero them, so they are mirrored from its copy read on bus 2.
+LKAS_HUD_PASSTHROUGH = ("LSS_STATE", "SETTINGS", "SET_ME_XFF", "SET_ME_X5F", "SET_ME_1_2",
+                        "TSR", "HMA", "HAND_ON_WHEEL_WARNING", "PT2", "PT3", "PT4", "PT5")
+
+
 # Button configurations for steering wheel controls
 BUTTONS = [
     Button(ButtonType.leftBlinker, "STALKS", "LEFT_BLINKER", [1]),

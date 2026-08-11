@@ -1,22 +1,30 @@
 from opendbc.can.parser import CANParser
 from opendbc.car import Bus, DT_CTRL, structs
 from opendbc.car.interfaces import CarStateBase
-from opendbc.car.byd.values import DBC, BUTTONS
+from opendbc.car.byd.values import DBC, BUTTONS, LKAS_HUD_PASSTHROUGH
 
 ButtonType = structs.CarState.ButtonEvent.Type
 
-# LKAS_HUD_ADAS fields the camera owns; we mirror them into our own copy of the message
-LKAS_HUD_PASSTHROUGH = ("LSS_STATE", "SETTINGS", "SET_ME_XFF", "SET_ME_X5F",
-                        "TSR", "HMA", "PT2", "PT3", "PT4", "PT5")
+# UNKNOWN (bytes 0-1), SET_ME_X01 and SET_ME_XE of STEERING_MODULE_ADAS are *constant* for
+# the whole of a camera steering episode — the camera holds bytes 0-2 at 2b 55 eb from the
+# first STEER_REQ frame to the last, and 00 00 e0 while idle. Measured over the 2026-08-09
+# drive: 1111 of the 1121 frames the camera sent with STEER_REQ set carried exactly this
+# triple, the remaining ten being the one- or two-frame ramp in and out of an episode.
+#
+# They are NOT a 20-bit sequence to be continued, and treating them as one is what broke
+# lateral control: openpilot latched the camera's value and added a fixed step every frame,
+# which walks SET_ME_XE through all sixteen values and SET_ME_X01 through all four. The car
+# accepts a few tens of seconds of that and then drops the entire stock ADAS — ACC_HUD_ADAS
+# ACC_ON1/ACC_ON2 and every ACC_CMD engagement bit go to zero together, taking openpilot's
+# cruiseState with them. Only ever send a triple the camera itself has been seen to send.
+STEER_TEMPLATE_FIELDS = ("UNKNOWN", "SET_ME_X01", "SET_ME_XE")
 
-# Bytes 0-1 and SET_ME_XE of STEERING_MODULE_ADAS are not three independent fields: they
-# form one 20-bit sequence, (SET_ME_XE << 16) | (byte1 << 8) | byte0, which the camera
-# advances by a fixed increment on every frame of a steering episode (measured: +1025/frame
-# at 115 km/h, +25575/frame in city driving). It is zero while the camera is idle. We can
-# neither derive the value nor the increment, and the EPS ignores commands where they look
-# wrong, so we latch the camera's sequence and keep advancing it ourselves while we steer.
-STEER_SEQ_BITS = 20
-STEER_SEQ_MASK = (1 << STEER_SEQ_BITS) - 1
+# The camera's steering frame, captured on-car: bytes 0-2 = 2b 55 eb.
+STEER_TEMPLATE_DEFAULT = {"UNKNOWN": 2773, "SET_ME_X01": 1, "SET_ME_XE": 0xB}
+
+# The camera ramps in over a frame or two at the start of an episode, so only adopt a
+# template once it has held still — otherwise we can latch a transitional value.
+STEER_TEMPLATE_STABLE_FRAMES = 5
 
 # ACC_CMD arrives at 50Hz with no counter/checksum validation in the parser, and a
 # single corrupted frame must not drop cruiseState.enabled for one frame — enough to fire
@@ -24,33 +32,46 @@ STEER_SEQ_MASK = (1 << STEER_SEQ_BITS) - 1
 CRUISE_DROP_FRAMES = 5
 
 
-def pack_steer_seq(unknown: int, set_me_x01: int, set_me_xe: int) -> int:
-    """Fold the three decoded DBC fields back into the single 20-bit sequence value."""
-    byte0 = (unknown >> 6) & 0xFF
-    byte1 = ((unknown & 0x3F) << 2) | (set_me_x01 & 0x3)
-    return ((set_me_xe & 0xF) << 16) | (byte1 << 8) | byte0
-
-
-def unpack_steer_seq(seq: int) -> dict:
-    """Split the 20-bit sequence back into the DBC field values the packer expects."""
-    byte0, byte1 = seq & 0xFF, (seq >> 8) & 0xFF
-    return {"UNKNOWN": (byte0 << 6) | (byte1 >> 2),
-            "SET_ME_X01": byte1 & 0x3,
-            "SET_ME_XE": (seq >> 16) & 0xF}
-
-
 class CarState(CarStateBase):
     def __init__(self, CP):
         super().__init__(CP)
         self.button_states = {button.event_type: False for button in BUTTONS}
         self.lkas_hud = dict.fromkeys(LKAS_HUD_PASSTHROUGH, 0)
-        self.steer_seq = 0          # camera's 20-bit steering sequence value
-        self.steer_seq_step = 0     # its per-frame increment
-        self._seq_prev = None
-        self.camera_has_steered = False
+        # the camera's own steering frame, held constant; None until it has steered once
+        self.steer_template = None
+        self._template_candidate = None
+        self._template_frames = 0
         self.acc_off_frames = 0
         self.cruise_enabled_last = False
         self.prev_angle = 0.0
+
+    def update_steer_template(self, cam_steer) -> None:
+        """
+        Latch the camera's steering frame while the camera is the one driving the EPS, so
+        that what we transmit is byte-identical to what this car's own ADAS transmits.
+
+        The fields are constant for the whole of a steering episode, so only adopt a value
+        once it has held still — the camera spends a frame or two ramping in and out, and
+        latching one of those transitional frames would have us send, forever, a triple the
+        car never sends.
+        """
+        if not cam_steer["STEER_REQ"]:
+            self._template_candidate = None
+            self._template_frames = 0
+            return
+
+        template = {k: int(cam_steer[k]) for k in STEER_TEMPLATE_FIELDS}
+        if not any(template.values()):  # the idle frame, sent during the ramp in
+            return
+
+        if template == self._template_candidate:
+            self._template_frames += 1
+        else:
+            self._template_candidate = template
+            self._template_frames = 1
+
+        if self._template_frames >= STEER_TEMPLATE_STABLE_FRAMES:
+            self.steer_template = template
 
     def update(self, can_parsers) -> structs.CarState:
         cp = can_parsers[Bus.pt]       # bus 0: car-side chassis CAN
@@ -140,19 +161,7 @@ class CarState(CarStateBase):
         ret.stockLkas = False
         self.lkas_hud = {k: cp_cam.vl["LKAS_HUD_ADAS"][k] for k in LKAS_HUD_PASSTHROUGH}
 
-        # Track the camera's steering sequence while it is the one driving the EPS
-        cam_steer = cp_cam.vl["STEERING_MODULE_ADAS"]
-        if cam_steer["STEER_REQ"]:
-            seq = pack_steer_seq(int(cam_steer["UNKNOWN"]), int(cam_steer["SET_ME_X01"]),
-                                 int(cam_steer["SET_ME_XE"]))
-            if seq:
-                if self._seq_prev is not None and seq != self._seq_prev:
-                    self.steer_seq_step = (seq - self._seq_prev) & STEER_SEQ_MASK
-                self._seq_prev = seq
-                self.steer_seq = seq
-                self.camera_has_steered = True
-        else:
-            self._seq_prev = None
+        self.update_steer_template(cp_cam.vl["STEERING_MODULE_ADAS"])
 
         # --- Safety ---
         ret.seatbeltUnlatched = not bool(cp.vl["METER_CLUSTER"]["SEATBELT_DRIVER"])

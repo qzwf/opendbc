@@ -1,11 +1,13 @@
 // BYD ATTO3 Safety Implementation
 //
 // Bus layout: 0 = car chassis CAN, 1 = camera/radar private CAN, 2 = camera ADAS CAN.
-// openpilot transmits STEERING_MODULE_ADAS on bus 0 only while it is actively steering.
-// The camera's copy is forwarded 2 -> 0 normally, so the stock LKAS keeps the wheel
-// whenever openpilot is quiet; it is blocked only while openpilot is transmitting, so
-// the EPS never sees two sources at once and there is never a gap with neither.
-// LKAS_HUD_ADAS is left entirely to the camera.
+// openpilot transmits STEERING_MODULE_ADAS and LKAS_HUD_ADAS on bus 0 only while it is
+// actively steering. The camera's copies are forwarded 2 -> 0 normally, so the stock LKAS
+// keeps the wheel whenever openpilot is quiet; each is blocked only while openpilot is
+// transmitting it, so the EPS never sees two sources at once and there is never a gap with
+// neither. The HUD is cosmetic — it exists because the camera drops its own LKAS within
+// seconds of us blocking its steering command, which would otherwise leave the cluster
+// showing LKAS off while openpilot is steering.
 //
 // STEERING_MODULE_ADAS.STEER_ANGLE is an absolute steering wheel angle target, so this
 // mode uses the angle checks (speed-dependent rate limits + inactive-angle tracking),
@@ -34,12 +36,17 @@
 // PEDAL_PRESSED_ACTIVE_LOW is the brake-light switch, which ACC also asserts.
 #define BYD_BRAKE_THRESHOLD 3U
 
-// How long the camera's steering command stays blocked after openpilot sends one. Longer
-// than a few missed frames at 50Hz, short enough to hand back promptly on disengage.
-#define BYD_STEER_TAKEOVER_TIMEOUT 150000U  // us
+// How long the camera's copy stays blocked after openpilot sends one. Longer than a few
+// missed frames at 50Hz, short enough to hand back promptly on disengage.
+#define BYD_TAKEOVER_TIMEOUT 150000U  // us
 
 static bool byd_steering = false;      // openpilot currently owns the EPS
 static uint32_t byd_last_steer_tx = 0U;
+
+// Tracked separately from byd_steering on purpose: the HUD carries no safety checks, so a
+// HUD frame must never be able to keep the camera's *steering* command blocked.
+static bool byd_hud = false;           // openpilot currently owns the LKAS HUD
+static uint32_t byd_last_hud_tx = 0U;
 
 // BYD's checksum: nibble sums of every byte but the last, folded with a fixed key.
 static uint32_t byd_compute_checksum(const CANPacket_t *msg) {
@@ -80,12 +87,12 @@ static uint8_t byd_get_counter(const CANPacket_t *msg) {
 }
 
 static safety_config byd_init(uint16_t param) {
-  // openpilot transmits both of these on bus 0. check_relay makes panda block the
-  // camera's copies from forwarding 2 -> 0 and flags a stuck relay.
-  // check_relay keeps stuck-relay detection, but static blocking is disabled so
-  // byd_fwd_hook can decide per-frame whether the camera still owns the EPS.
+  // openpilot transmits both of these on bus 0. check_relay keeps stuck-relay detection,
+  // but static blocking is disabled so byd_fwd_hook can decide per-frame whether the
+  // camera still owns the EPS and the HUD.
   static const CanMsg BYD_TX_MSGS[] = {
     {(int)BYD_STEERING_MODULE_ADAS, 0, 8, .check_relay = true, .disable_static_blocking = true},
+    {(int)BYD_LKAS_HUD_ADAS,        0, 8, .check_relay = true, .disable_static_blocking = true},
   };
 
   // STEER_MODULE_2, WHEEL_SPEED and DRIVE_STATE carry no checksum or counter in the DBC.
@@ -103,6 +110,8 @@ static safety_config byd_init(uint16_t param) {
   SAFETY_UNUSED(param);
   byd_steering = false;
   byd_last_steer_tx = 0U;
+  byd_hud = false;
+  byd_last_hud_tx = 0U;
 
   safety_config ret;
   SET_TX_MSGS(BYD_TX_MSGS, ret);
@@ -190,22 +199,41 @@ static bool byd_tx_hook(const CANPacket_t *msg) {
 
   }
 
-  if (tx && (msg->bus == 0U) && (msg->addr == BYD_STEERING_MODULE_ADAS)) {
-    byd_steering = true;
-    byd_last_steer_tx = microsecond_timer_get();
+  if (tx && (msg->bus == 0U)) {
+    if (msg->addr == BYD_STEERING_MODULE_ADAS) {
+      byd_steering = true;
+      byd_last_steer_tx = microsecond_timer_get();
+    }
+    if (msg->addr == BYD_LKAS_HUD_ADAS) {
+      byd_hud = true;
+      byd_last_hud_tx = microsecond_timer_get();
+    }
   }
 
   return tx;
 }
 
-// Hand the EPS back to the camera whenever openpilot stops transmitting.
+// Hand each message back to the camera whenever openpilot stops transmitting it.
+static bool byd_expired(bool owned, uint32_t last_tx) {
+  return owned && (safety_get_ts_elapsed(microsecond_timer_get(), last_tx) >= BYD_TAKEOVER_TIMEOUT);
+}
+
 static bool byd_fwd_hook(int bus_num, int addr) {
   bool blocked = false;
-  if ((bus_num == 2) && ((uint32_t)addr == BYD_STEERING_MODULE_ADAS)) {
-    if (byd_steering && (safety_get_ts_elapsed(microsecond_timer_get(), byd_last_steer_tx) >= BYD_STEER_TAKEOVER_TIMEOUT)) {
-      byd_steering = false;
+  if (bus_num == 2) {
+    if ((uint32_t)addr == BYD_STEERING_MODULE_ADAS) {
+      if (byd_expired(byd_steering, byd_last_steer_tx)) {
+        byd_steering = false;
+      }
+      blocked = byd_steering;
+    } else if ((uint32_t)addr == BYD_LKAS_HUD_ADAS) {
+      if (byd_expired(byd_hud, byd_last_hud_tx)) {
+        byd_hud = false;
+      }
+      blocked = byd_hud;
+    } else {
+      // everything else the camera sends forwards untouched
     }
-    blocked = byd_steering;
   }
   return blocked;
 }

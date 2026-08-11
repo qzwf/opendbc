@@ -4,7 +4,7 @@ from opendbc.can.packer import CANPacker
 from opendbc.car import Bus
 from opendbc.car.byd.values import CarControllerParams
 from opendbc.car.byd import bydcan
-from opendbc.car.byd.carstate import STEER_SEQ_MASK, unpack_steer_seq
+from opendbc.car.byd.carstate import STEER_TEMPLATE_DEFAULT
 from opendbc.car.lateral import apply_std_steer_angle_limits
 from opendbc.car.interfaces import CarControllerBase
 
@@ -18,8 +18,6 @@ class CarController(CarControllerBase):
 
         self.apply_angle_last = 0.0
         self.acc_idx = 0
-        self.steer_seq = 0
-        self.lat_active_last = False
 
     def update(self, CC, CS, now_nanos):
         actuators = CC.actuators
@@ -56,29 +54,25 @@ class CarController(CarControllerBase):
             # back — so there is never a window with nobody driving the EPS. It also lets the
             # camera keep refreshing the frame template we copy.
             if CC.latActive:
-                # Latch the camera's sequence on engage, then keep advancing it at the camera's
-                # own rate so the stream the EPS sees carries on unbroken from the camera's.
-                if not self.lat_active_last:
-                    self.steer_seq = CS.steer_seq
-                else:
-                    self.steer_seq = (self.steer_seq + CS.steer_seq_step) & STEER_SEQ_MASK
-
-                if self.steer_seq:
-                    template = unpack_steer_seq(self.steer_seq)
-                else:
-                    # The camera has not steered since boot (blocked lens, LKAS never engaged),
-                    # so there is no sequence to continue — and all-zero bytes make the EPS
-                    # ignore the command. Fall back to the static frame bukapilot shipped for
-                    # this exact car: SET_ME_X01 "must be 0x1 to steer"; SET_ME_XE 0xB while
-                    # moving ("faults less, highest angle limit at high speed"), 0xE at
-                    # standstill. The camera's own frames use the same 0xB/0xE nibble.
-                    template = {"UNKNOWN": 0, "SET_ME_X01": 0x1,
-                                "SET_ME_XE": 0xE if CS.out.standstill else 0xB}
+                # Everything in the frame other than the angle is held at the constant the
+                # camera itself sends while steering (bytes 0-2 = 2b 55 eb, at every speed).
+                # It must not be varied: walking these fields across their range is what made
+                # the car drop its whole ADAS mid-drive. Use the camera's own latched value
+                # when we have seen it steer, and the captured constant otherwise — a blocked
+                # lens means the camera never steers and never gives us one.
+                template = CS.steer_template or STEER_TEMPLATE_DEFAULT
 
                 can_sends.append(bydcan.create_steering_control(self.packer, apply_angle,
                                                                 template,
                                                                 self.frame // self.params.STEER_STEP))
-            self.lat_active_last = CC.latActive
+
+                # Tell the cluster openpilot has the wheel. The camera drops its own LKAS
+                # within seconds of us blocking its steering command, so without this the
+                # LKAS indicator goes dark while openpilot is still steering. Sent on the
+                # same cadence as the steering command, so panda hands 0x316 back to the
+                # camera at the same moment it hands back 0x1E2.
+                can_sends.append(bydcan.create_lkas_hud(self.packer, CS.lkas_hud,
+                                                        self.frame // self.params.STEER_STEP))
 
         # === LONGITUDINAL ===
         if self.CP.openpilotLongitudinalControl:
